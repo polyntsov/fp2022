@@ -1,0 +1,9 @@
+(library
+ (name sql_lib)
+ (public_name SQL.Lib)
+ (modules Ast Lambda Interpret Parser Printast Pprintast utils Tests)
+ (modules_without_implementation ast)
+ (libraries base angstrom)
+ (preprocess
+  (pps ppx_expect ppx_deriving.show))
+ (inline_tests))
