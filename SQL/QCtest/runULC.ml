@@ -2,4 +2,4 @@
 
 (** SPDX-License-Identifier: LGPL-3.0-or-later *)
 
-let () = Format.printf "Failed tests: %d\n%!" (QCTests.run ())
+(*let () = Format.printf "Failed tests: %d\n%!" (QCTests.run ())*)

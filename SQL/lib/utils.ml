@@ -8,7 +8,7 @@ open Ast
 (* TODO: use a set instead of list *)
 let list_remove x = List.filter ~f:(fun a -> not (String.equal a x))
 
-let free_vars =
+(*let free_vars =
   let rec helper acc = function
     | Var s -> s :: acc
     | Abs (s, l) -> acc @ list_remove s (helper [] l)
@@ -25,7 +25,7 @@ type error =
 
 let var x = Var x
 let abs x l = Abs (x, l)
-let app l r = App (l, r)
+let app l r = App (l, r)*)
 
 (* TODO: rework this *)
 module type MONAD_FAIL = sig

@@ -7,7 +7,7 @@ open QCheck.Gen
 open Sql_lib
 open Sql_lib.Utils
 
-let varname =
+(*let varname =
   map (fun n -> String.make 1 (Char.chr n)) (int_range (Char.code 'a') (Char.code 'z'))
 ;;
 
@@ -60,4 +60,4 @@ let print_parse_is_identity =
           (Format.asprintf "%a" pp l)))
 ;;
 
-let run () = QCheck_base_runner.run_tests [ print_parse_is_identity ]
+let run () = QCheck_base_runner.run_tests [ print_parse_is_identity ]*)

@@ -7,7 +7,7 @@
 open Ast
 open Utils
 
-let pp =
+(*let pp =
   let mangle t fmt x =
     if is_free_in x t then Format.fprintf fmt "%s" x else Format.fprintf fmt "_"
   in
@@ -52,4 +52,4 @@ let pp =
     | Abs (x, t) -> Format.fprintf fmt "(λ %a -> %a)" (mangle t) x pp t
   in
   pp
-;;
+;;*)

@@ -10,7 +10,7 @@ type column_type =
   | StringCol
 [@@deriving yojson]
 
-(** Table attirbute, constitutes column's name and type *)
+(** Table attribute, constitutes column's name and type *)
 type column
 
 (** Header of the table, i.e. list of attributes *)
@@ -27,15 +27,15 @@ type catalog
 (** Catalog is stored with this directory structure:
    _catalog/┌──►Catalog.meta.json
             │
-            ├──►Database1_name/┌───►Table1.csv
+            ├──►Database1_name/┌───►Table1
             │                  │
-            │                  └───►Table2.csv
+            │                  └───►Table2
             │
-            └──►Database2_name/┌───►Table1.csv
+            └──►Database2_name/┌───►Table1
                                │
-                               ├───►Table2.csv
+                               ├───►Table2
                                │
-                               └───►Table3.csv
+                               └───►Table3
   Catalog.meta.json contains all information about this catalog,
   i.e. all databases (identified by their names), their tables, headers of the tables
 *)

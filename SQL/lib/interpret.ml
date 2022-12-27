@@ -7,7 +7,7 @@
 open Base
 open Utils
 
-module Interpret (M : MONAD_FAIL) : sig
+(*module Interpret (M : MONAD_FAIL) : sig
   val run : _ Ast.t -> (int, Utils.error) M.t
 end = struct
   let run _ =
@@ -26,4 +26,4 @@ let parse_and_run str =
       Caml.exit 1
   in
   ans
-;;
+;;*)

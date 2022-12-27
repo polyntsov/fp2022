@@ -6,7 +6,7 @@ type error = [ `ParsingError of string ]
 
 val pp_error : Format.formatter -> [< `ParsingError of string ] -> unit
 
-(** Main entry of parser *)
+(*(** Main entry of parser *)
 val parse : string -> (Ast.name Ast.t, error) result
 
 type dispatch =
@@ -15,4 +15,4 @@ type dispatch =
   }
 
 (* A collection of miniparsers *)
-val parse_lam : dispatch
+val parse_lam : dispatch*)
