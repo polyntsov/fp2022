@@ -91,14 +91,12 @@ type datasource =
       }
 [@@deriving show { with_path = false }]
 
-type from_clause =
-  { from : datasource list
-  ; where : where_clause option
-  ; orderby : orderby_clause option
-  }
-[@@deriving show { with_path = false }]
-
 type statement =
   | Insert
-  | Select of projection_item list * from_clause
+  | Select of
+      { projection : projection_item list
+      ; from : datasource list
+      ; where : where_clause option
+      ; orderby : orderby_clause list option
+      }
 [@@deriving show { with_path = false }]
