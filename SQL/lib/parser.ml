@@ -108,11 +108,6 @@ let%test _ = assert_ok_s column_name_p "main.main.a"
 let%test _ = assert_error column_name_p "main.main.a."
 let%test _ = assert_error column_name_p ".main.main.a"
 
-let table_p =
-  let table_p = table_name_p >>| fun name -> Table name in
-  lspaces table_p
-;;
-
 let column_p =
   let column_p = column_name_p >>| column in
   lspaces column_p
@@ -349,6 +344,298 @@ let%test _ =
 ;;
 
 let%test _ = assert_error orderby_clause_p "1 + A sc"
+
+(*** Datasource parsers ***)
+
+let table_p =
+  let table_p = table_name_p >>| fun name -> Table name in
+  lspaces table_p
+;;
+
+let on_word_p = string_ci "ON"
+let join_word_p = string_ci "JOIN" *> return inner
+let inner_p = string_ci "INNER JOIN" *> return inner
+let left_p = string_ci "LEFT JOIN" *> return left
+let right_p = string_ci "RIGHT JOIN" *> return right
+let cross_p = string_ci "CROSS JOIN" *> return cross
+
+let chain_joins chain link =
+  let rec go chain =
+    lift
+      (fun (join_constraint, right) -> Join { left = chain; right; join_constraint })
+      link
+    >>= go
+    <|> return chain
+  in
+  chain >>= go
+;;
+
+let join_p =
+  fix (fun join ->
+    let left = parens_p join <|> table_p in
+    let right = parens_p join <|> join <|> table_p in
+    let noncross_join =
+      lift3
+        (fun join_constraint right pred -> join_constraint pred, right)
+        (lspaces (join_word_p <|> inner_p <|> left_p <|> right_p))
+        (lspaces right)
+        (lspaces (on_word_p *> predicate_p))
+    in
+    let cross_join =
+      (* For cross join right side should be either nested join in parentheses or a table
+         (and that's what we only parse as the left side of the non-cross join). This is not
+         the case for the non-cross joins.
+         Explanatory examples:
+         Join:
+            t1 join t2 join t3 on t2.id = t3.id on t1.id = t2.id
+         is equivalent to (note the associativity):
+            t1 join (t2 join t3 on t2.id = t3.id) on t1.id = t2.id
+         whereas with cross join:
+            t1 cross join t2 join t3 on t2.id = t3.id
+         it is equivalent to:
+            (t1 cross join t2) join t3 on t2.id = t3.id
+         *)
+      both (lspaces cross_p) (lspaces left)
+    in
+    let chained_join = noncross_join <|> cross_join in
+    chain_joins
+      (lift2
+         (fun left (join_constraint, right) -> Join { left; right; join_constraint })
+         (lspaces left)
+         chained_join)
+      chained_join)
+;;
+
+let datasource_p = parens_p join_p <|> join_p <|> table_p
+let assert_ok_ds s expected = assert_ok show_datasource datasource_p s expected
+
+let%test _ =
+  assert_ok_ds
+    "t1 join t2 on t1.id = t2.id"
+    (Join
+       { left = Table "t1"
+       ; right = Table "t2"
+       ; join_constraint =
+           Inner (Equal (Arithm (Column "t1.id"), Arithm (Column "t2.id")))
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "(t1 join t2 on t1.id = t2.id)"
+    (Join
+       { left = Table "t1"
+       ; right = Table "t2"
+       ; join_constraint =
+           Inner (Equal (Arithm (Column "t1.id"), Arithm (Column "t2.id")))
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 cross join t2"
+    (Join { left = Table "t1"; right = Table "t2"; join_constraint = Cross })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "(t1 cross join t2)"
+    (Join { left = Table "t1"; right = Table "t2"; join_constraint = Cross })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 join t2 join t3 on t2.id = t3.id on t1.id = t2.id"
+    (Join
+       { left = Table "t1"
+       ; right =
+           Join
+             { left = Table "t2"
+             ; right = Table "t3"
+             ; join_constraint =
+                 Inner (Equal (Arithm (Column "t2.id"), Arithm (Column "t3.id")))
+             }
+       ; join_constraint =
+           Inner (Equal (Arithm (Column "t1.id"), Arithm (Column "t2.id")))
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 join (t2 join t3 on t2.id = t3.id) on t1.id = t2.id"
+    (Join
+       { left = Table "t1"
+       ; right =
+           Join
+             { left = Table "t2"
+             ; right = Table "t3"
+             ; join_constraint =
+                 Inner (Equal (Arithm (Column "t2.id"), Arithm (Column "t3.id")))
+             }
+       ; join_constraint =
+           Inner (Equal (Arithm (Column "t1.id"), Arithm (Column "t2.id")))
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 join t2 on t1.id = t2.id join t3 on t1.id = t3.id"
+    (Join
+       { left =
+           Join
+             { left = Table "t1"
+             ; right = Table "t2"
+             ; join_constraint =
+                 Inner (Equal (Arithm (Column "t1.id"), Arithm (Column "t2.id")))
+             }
+       ; right = Table "t3"
+       ; join_constraint =
+           Inner (Equal (Arithm (Column "t1.id"), Arithm (Column "t3.id")))
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 join t2 on t1.id = t2.id join t3 on t1.id = t3.id right join t4 on t2.id=t4.id"
+    (Join
+       { left =
+           Join
+             { left =
+                 Join
+                   { left = Table "t1"
+                   ; right = Table "t2"
+                   ; join_constraint =
+                       Inner (Equal (Arithm (Column "t1.id"), Arithm (Column "t2.id")))
+                   }
+             ; right = Table "t3"
+             ; join_constraint =
+                 Inner (Equal (Arithm (Column "t1.id"), Arithm (Column "t3.id")))
+             }
+       ; right = Table "t4"
+       ; join_constraint =
+           Right (Equal (Arithm (Column "t2.id"), Arithm (Column "t4.id")))
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 join (t2 cross join t3) on t1.id = t2.id"
+    (Join
+       { left = Table "t1"
+       ; right = Join { left = Table "t2"; right = Table "t3"; join_constraint = Cross }
+       ; join_constraint =
+           Inner (Equal (Arithm (Column "t1.id"), Arithm (Column "t2.id")))
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 cross join (t2 left join t3 on t3.id = t2.id)"
+    (Join
+       { left = Table "t1"
+       ; right =
+           Join
+             { left = Table "t2"
+             ; right = Table "t3"
+             ; join_constraint =
+                 Left (Equal (Arithm (Column "t3.id"), Arithm (Column "t2.id")))
+             }
+       ; join_constraint = Cross
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 cross join t2 left join t3 on t1.id = t3.id"
+    (Join
+       { left = Join { left = Table "t1"; right = Table "t2"; join_constraint = Cross }
+       ; right = Table "t3"
+       ; join_constraint = Left (Equal (Arithm (Column "t1.id"), Arithm (Column "t3.id")))
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 cross join t2 cross join t3"
+    (Join
+       { left = Join { left = Table "t1"; right = Table "t2"; join_constraint = Cross }
+       ; right = Table "t3"
+       ; join_constraint = Cross
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 cross join t2 inner join t3 on t1.id = t3.id cross join t4"
+    (Join
+       { left =
+           Join
+             { left =
+                 Join { left = Table "t1"; right = Table "t2"; join_constraint = Cross }
+             ; right = Table "t3"
+             ; join_constraint =
+                 Inner (Equal (Arithm (Column "t1.id"), Arithm (Column "t3.id")))
+             }
+       ; right = Table "t4"
+       ; join_constraint = Cross
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 cross join (t2 inner join t3 on t2.id = t3.id) cross join t4"
+    (Join
+       { left =
+           Join
+             { left = Table "t1"
+             ; right =
+                 Join
+                   { left = Table "t2"
+                   ; right = Table "t3"
+                   ; join_constraint =
+                       Inner (Equal (Arithm (Column "t2.id"), Arithm (Column "t3.id")))
+                   }
+             ; join_constraint = Cross
+             }
+       ; right = Table "t4"
+       ; join_constraint = Cross
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 left join t2 cross join t3 on t1.id >= t3.id"
+    (Join
+       { left = Table "t1"
+       ; right = Join { left = Table "t2"; right = Table "t3"; join_constraint = Cross }
+       ; join_constraint =
+           Left (GreaterOrEq (Arithm (Column "t1.id"), Arithm (Column "t3.id")))
+       })
+;;
+
+let%test _ =
+  assert_ok_ds
+    "t1 right join t2 on t1.a < 2 + t2.a OR t1.value = 10"
+    (Join
+       { left = Table "t1"
+       ; right = Table "t2"
+       ; join_constraint =
+           Right
+             (OrPred
+                ( Less (Arithm (Column "t1.a"), Arithm (Plus (Int 2, Column "t2.a")))
+                , Equal (Arithm (Column "t1.value"), Arithm (Int 10)) ))
+       })
+;;
+
+let%test _ = assert_ok_ds "main.t1" (Table "main.t1")
+let%test _ = assert_ok_ds "t1" (Table "t1")
+let%test _ = assert_error datasource_p "(t1)"
+let%test _ = assert_error datasource_p "t1 cross join t2 on t1.id = t2.id"
+let%test _ = assert_error datasource_p "t1 join t2 on t1.id + t2.id"
+
+let%test _ =
+  assert_error datasource_p "(t1 join t2) join t3 on t2.id = t3.id on t1.id = t2.id"
+;;
 
 type error = [ `ParsingError of string ]
 

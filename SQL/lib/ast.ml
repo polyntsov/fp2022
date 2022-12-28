@@ -80,14 +80,14 @@ type join_constraint =
   | Right of predicate
   | Inner of predicate
   | Cross
-[@@deriving show { with_path = false }]
+[@@deriving show { with_path = false }, variants]
 
 type datasource =
   | Table of name
   | Join of
       { left : datasource
       ; right : datasource
-      ; join_type : join_constraint
+      ; join_constraint : join_constraint
       }
 [@@deriving show { with_path = false }]
 
