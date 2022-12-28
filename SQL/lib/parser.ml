@@ -637,6 +637,44 @@ let%test _ =
   assert_error datasource_p "(t1 join t2) join t3 on t2.id = t3.id on t1.id = t2.id"
 ;;
 
+(*** SQL statement parsers ***)
+
+let comma_p = char ','
+let insert_word_p = string_ci "INSERT"
+let select_word_p = string_ci "SELECT"
+let from_word_p = string_ci "FROM"
+let where_word_p = string_ci "WHERE"
+let orderby_word_p = string_ci "ORDER" *> satisfy is_space *> lspaces (string_ci "BY")
+let clause wordp clausep = lspaces wordp *> clausep
+
+let optional_clause wordp clausep =
+  option None (lspaces wordp *> clausep >>| fun clause -> Some clause)
+;;
+
+let projection_p = clause select_word_p (sep_by1 comma_p proj_item_p)
+let from_p = clause from_word_p (sep_by1 comma_p datasource_p)
+let where_p = optional_clause where_word_p predicate_p
+let orderby_p = optional_clause orderby_word_p (sep_by1 comma_p orderby_clause_p)
+
+let select_p =
+  lift4
+    (fun projection from where orderby -> Select { projection; from; where; orderby })
+    projection_p
+    from_p
+    where_p
+    orderby_p
+;;
+
+let insert_p = insert_word_p *> fail "Insert statements are not supported yet"
+let statement_p = spaces (select_p <|> insert_p)
+let assert_ok_sql s expected = assert_ok show_statement statement_p s expected
+
+let%test _ =
+  assert_ok_sql
+    "select * from t"
+    (Select { projection = [ Star ]; from = [ Table "t" ]; where = None; orderby = None })
+;;
+
 type error = [ `ParsingError of string ]
 
 let pp_error ppf = function
