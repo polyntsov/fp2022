@@ -73,7 +73,7 @@ type orderby_item = expression [@@deriving show { with_path = false }]
 type orderby_clause =
   | Asc of orderby_item
   | Desc of orderby_item
-[@@deriving show { with_path = false }]
+[@@deriving show { with_path = false }, variants]
 
 type join_constraint =
   | Left of predicate

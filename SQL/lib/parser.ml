@@ -323,6 +323,33 @@ let%test _ =
        , Less (Arithm (Column "A"), Arithm (Column "B")) ))
 ;;
 
+(*** Order by item parsers ***)
+
+let asc_p = string_ci "ASC" *> return asc
+let desc_p = string_ci "DESC" *> return desc
+
+let default_asc_p =
+  peek_char
+  >>= function
+  | Some ',' | None -> return asc
+  | Some c -> fail ("Unexpected character '%s' in order by clause" ^ String.make 1 c)
+;;
+
+let orderby_clause_p = lift2 ( |> ) expr_p (lspaces (desc_p <|> asc_p <|> default_asc_p))
+
+let assert_ok_orderby s expected =
+  assert_ok show_orderby_clause orderby_clause_p s expected
+;;
+
+let%test _ = assert_ok_orderby "1 + 1" (Asc (Arithm (Plus (Int 1, Int 1))))
+let%test _ = assert_ok_orderby "1 + A desc" (Desc (Arithm (Plus (Int 1, Column "A"))))
+
+let%test _ =
+  assert_ok_orderby "Desc / Asc" (Asc (Arithm (Div (Column "Desc", Column "Asc"))))
+;;
+
+let%test _ = assert_error orderby_clause_p "1 + A sc"
+
 type error = [ `ParsingError of string ]
 
 let pp_error ppf = function
