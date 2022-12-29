@@ -156,8 +156,8 @@ let string_value_p =
 
 let parens_p p = lspaces (char '(' *> p <* char ')')
 
-let infix_op_p str_op cons =
-  let infix_op_p = Angstrom.string str_op *> return cons in
+let infix_op_p ?(ci = false) str_op cons =
+  let infix_op_p = (if ci then string_ci else Angstrom.string) str_op *> return cons in
   lspaces infix_op_p
 ;;
 
@@ -263,8 +263,8 @@ let atom_predicate_p =
   lift3 (fun x pred y -> pred x y) expr_p pred_p expr_p
 ;;
 
-let and_p = infix_op_p "AND" andpred
-let or_p = infix_op_p "OR" orpred
+let and_p = infix_op_p ~ci:true "AND" andpred
+let or_p = infix_op_p ~ci:true "OR" orpred
 
 let predicate_p =
   fix (fun expr ->
@@ -286,6 +286,16 @@ let%test _ =
   assert_ok_pred
     "t1.id = t2.id"
     (Equal (Arithm (Column "t1.id"), Arithm (Column "t2.id")))
+;;
+
+let%test _ =
+  assert_ok_pred
+    "t1.id = t2.id and c = 1000 and d < 101"
+    (AndPred
+       ( AndPred
+           ( Equal (Arithm (Column "t1.id"), Arithm (Column "t2.id"))
+           , Equal (Arithm (Column "c"), Arithm (Int 1000)) )
+       , Less (Arithm (Column "d"), Arithm (Int 101)) ))
 ;;
 
 let%test _ = assert_ok_pred "'abc' = col" (Equal (String "abc", Arithm (Column "col")))
