@@ -4,9 +4,9 @@
 
 open Sql_lib
 
-(*let () =
+let () =
   let s = Stdio.In_channel.input_all Caml.stdin in
-  match Sql_lib.Parser.parse s with
-  | Result.Ok ast -> Format.printf "%a\n%!" Printast.pp_named ast
-  | Error _ -> Format.printf "Some error"
-;;*)
+  match Parser.parse s with
+  | Result.Ok ast -> Format.printf "%s\n%!" (Ast.show_ast ast)
+  | Result.Error e -> Format.printf "An error occured during parsing\n%s\n\t%s\n" s e
+;;
