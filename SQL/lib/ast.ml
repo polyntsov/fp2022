@@ -47,6 +47,7 @@ type arithm_expression =
 
 type expression =
   | Arithm of arithm_expression
+      [@printer fun fmt expr -> fprintf fmt "%s" (show_arithm_expression expr)]
   (* To forbid ill-formed arithmetic expressions with strings on the parser level *)
   | String of string (** Any single quoted string *)
 [@@deriving show { with_path = false }, variants]
