@@ -101,3 +101,5 @@ type statement =
       ; orderby : orderby_clause list option
       }
 [@@deriving show { with_path = false }]
+
+let show_ast ast = show_statement ast
