@@ -59,11 +59,11 @@ let is_digit = function
   | _ -> false
 ;;
 
-(* Parses any string containing only letters and digits.
-   The string must start with a letter. *)
+(* Parses any string containing only letters, underscores and digits.
+   The string must start with a letter or an underscore. *)
 let entity_name_p =
   let is_letter = function
-    | 'a' .. 'z' | 'A' .. 'Z' -> true
+    | 'a' .. 'z' | 'A' .. 'Z' | '_' -> true
     | _ -> false
   in
   (peek_char
