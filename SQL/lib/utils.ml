@@ -18,18 +18,31 @@ let list_remove x = List.filter ~f:(fun a -> not (String.equal a x))
 ;;
 
 let is_free_in x term = List.mem (free_vars term) x ~equal:String.equal
+*)
+
+type ('a, 'b) type_error =
+  { value : 'b
+  ; actual : 'a
+  ; expected : 'a
+  }
 
 type error =
-  | UnknownVariable of string (** just for example *)
-  | ParsingErrorDescription
+  | UnknownTable of string
+  | UnknownColumn of string
+  | AmbiguousColumn of string
+  | TypesMismatch of
+      { x : string
+      ; op : string
+      ; y : string
+      }
 
-let var x = Var x
+(*let var x = Var x
 let abs x l = Abs (x, l)
 let app l r = App (l, r)*)
 
 (* TODO: rework this *)
-module type MONAD_FAIL = sig
-  include Base.Monad.S2
+module type MonadFail = sig
+  include Base.Monad.S2 with type ('a, 'e) t = ('a, 'e) result
 
   val fail : 'e -> ('a, 'e) t
 end
