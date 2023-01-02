@@ -58,7 +58,7 @@ module Relation : sig
   val to_tuple_list : t -> Tuple.t list
 end
 
-module Catalog : sig
+module type SCatalog = sig
   (** [create ()] loads existing catalog or creates a new empty one if none exists *)
   val create : unit -> catalog
 
@@ -83,3 +83,5 @@ module Catalog : sig
   (** [get_table name c] returns [Some table] with name [name] or [None] if none exists *)
   val get_table : string -> catalog -> table option
 end
+
+module Catalog : SCatalog

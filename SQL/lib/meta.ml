@@ -95,6 +95,18 @@ let rec rm_non_empty_dir path =
   | false -> Sys.remove path
 ;;
 
+(* Copy-paste from .mli file to make it compile (why does it work like this?) *)
+module type SCatalog = sig
+  val create : unit -> catalog
+  val drop : unit -> catalog
+  val create_db : string -> catalog -> database * catalog
+  val create_table : string -> database -> table * catalog
+  val create_cols : (string * column_type) list -> table -> table * catalog
+  val dump : catalog -> unit
+  val to_string : catalog -> string
+  val get_table : string -> catalog -> table option
+end
+
 module Catalog = struct
   let add_db db (Catalog dbs) = Catalog (db :: dbs)
   let delete_db db (Catalog dbs) = Catalog (List.filter (( != ) db) dbs)
