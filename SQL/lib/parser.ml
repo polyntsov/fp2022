@@ -85,7 +85,7 @@ let complex_entity_name_p top_p =
   | true -> entity_name_p >>| Format.sprintf "%s.%s" name
 ;;
 
-(*** Expression parsers ***)
+(*** Atomic expression parsers ***)
 
 (* Table name parser, parses [database.]table strings *)
 let table_name_p = complex_entity_name_p entity_name_p
@@ -178,77 +178,56 @@ let arithm_expr_p =
     chainl1_p term (add_p <|> sub_p))
 ;;
 
-let expr_p = arithm_expr_p >>| arithm <|> string_value_p
-let assert_ok_expr s expected = assert_ok show_expression expr_p s expected
+let atom_expr_p = arithm_expr_p >>| arithm <|> string_value_p
+let assert_ok_atom_expr s expected = assert_ok show_atom_expression atom_expr_p s expected
 
-let%test _ = assert_ok_expr "'abc'" (String "abc")
-let%test _ = assert_ok_expr "'  kakadu'" (String "  kakadu")
-let%test _ = assert_ok_expr "    'k a k a d u'" (String "k a k a d u")
-let%test _ = assert_ok_expr "'r_d_b_m_s'" (String "r_d_b_m_s")
-let%test _ = assert_ok_expr "'\"kakadu\"'" (String "\"kakadu\"")
-let%test _ = assert_ok_expr "''" (String "")
-let%test _ = assert_ok_expr "1 + 1" (Arithm (Plus (Int 1, Int 1)))
-let%test _ = assert_ok_expr "(1 + 1)" (Arithm (Plus (Int 1, Int 1)))
-let%test _ = assert_ok_expr "(1 + 1) * 2" (Arithm (Mult (Plus (Int 1, Int 1), Int 2)))
-let%test _ = assert_ok_expr "1 * 1" (Arithm (Mult (Int 1, Int 1)))
-let%test _ = assert_ok_expr "1 *  8" (Arithm (Mult (Int 1, Int 8)))
-let%test _ = assert_ok_expr "1 - column" (Arithm (Minus (Int 1, Column "column")))
-let%test _ = assert_ok_expr "A / B" (Arithm (Div (Column "A", Column "B")))
-let%test _ = assert_ok_expr "  A/43" (Arithm (Div (Column "A", Int 43)))
-(* It works like this in postgres, so I'll leave it as it is *)
-let%test _ = assert_ok_expr "1+-1" (Arithm (Plus (Int 1, Int (-1))))
+let%test _ = assert_ok_atom_expr "'abc'" (String "abc")
+let%test _ = assert_ok_atom_expr "'  kakadu'" (String "  kakadu")
+let%test _ = assert_ok_atom_expr "    'k a k a d u'" (String "k a k a d u")
+let%test _ = assert_ok_atom_expr "'r_d_b_m_s'" (String "r_d_b_m_s")
+let%test _ = assert_ok_atom_expr "'\"kakadu\"'" (String "\"kakadu\"")
+let%test _ = assert_ok_atom_expr "''" (String "")
+let%test _ = assert_ok_atom_expr "1 + 1" (Arithm (Plus (Int 1, Int 1)))
+let%test _ = assert_ok_atom_expr "(1 + 1)" (Arithm (Plus (Int 1, Int 1)))
 
 let%test _ =
-  assert_ok_expr
+  assert_ok_atom_expr "(1 + 1) * 2" (Arithm (Mult (Plus (Int 1, Int 1), Int 2)))
+;;
+
+let%test _ = assert_ok_atom_expr "1 * 1" (Arithm (Mult (Int 1, Int 1)))
+let%test _ = assert_ok_atom_expr "1 *  8" (Arithm (Mult (Int 1, Int 8)))
+let%test _ = assert_ok_atom_expr "1 - column" (Arithm (Minus (Int 1, Column "column")))
+let%test _ = assert_ok_atom_expr "A / B" (Arithm (Div (Column "A", Column "B")))
+let%test _ = assert_ok_atom_expr "  A/43" (Arithm (Div (Column "A", Int 43)))
+(* It works like this iatom_n postgres, so I'll leave it as it is *)
+let%test _ = assert_ok_atom_expr "1+-1" (Arithm (Plus (Int 1, Int (-1))))
+
+let%test _ =
+  assert_ok_atom_expr
     "1*8 + 3 + (2 * 4)"
     (Arithm (Plus (Plus (Mult (Int 1, Int 8), Int 3), Mult (Int 2, Int 4))))
 ;;
 
 let%test _ =
-  assert_ok_expr
+  assert_ok_atom_expr
     "1*8 + 3 + (tablename.column * 4)"
     (Arithm
        (Plus (Plus (Mult (Int 1, Int 8), Int 3), Mult (Column "tablename.column", Int 4))))
 ;;
 
 let%test _ =
-  assert_ok_expr
+  assert_ok_atom_expr
     "1 * (8 + 3) - db.table.col"
     (Arithm (Minus (Mult (Int 1, Plus (Int 8, Int 3)), Column "db.table.col")))
 ;;
 
-let%test _ = assert_error expr_p "1 + 'abc'"
-let%test _ = assert_error expr_p "'test'test'"
-let%test _ = assert_error expr_p "'''"
-let%test _ = assert_error expr_p "1 * (8 + 3) - db.db.table.col"
-
-(*** Projection item parsers ***)
-let star_p = lspaces (char '*')
-let as_p = spaces (string_ci "AS")
-
-let alias_p =
-  option "" as_p
-  >>= function
-  | "" -> return None
-  | _ -> entity_name_p >>| fun name -> Some name
-;;
-
-let single_item_p = lift2 atomitem expr_p alias_p
-let proj_item_p = star_p *> return Star <|> single_item_p
-let assert_ok_proj s expected = assert_ok show_projection_item proj_item_p s expected
-
-let%test _ = assert_ok_proj "*" Star
-let%test _ = assert_ok_proj " *" Star
-let%test _ = assert_ok_proj "1 +3" (AtomItem (Arithm (Plus (Int 1, Int 3)), None))
-let%test _ = assert_ok_proj "col as A" (AtomItem (Arithm (Column "col"), Some "A"))
-
-let%test _ =
-  assert_ok_proj
-    "2 * col as Alias"
-    (AtomItem (Arithm (Mult (Int 2, Column "col")), Some "Alias"))
-;;
+let%test _ = assert_error atom_expr_p "1 + 'abc'"
+let%test _ = assert_error atom_expr_p "'test'test'"
+let%test _ = assert_error atom_expr_p "'''"
+let%test _ = assert_error atom_expr_p "1 * (8 + 3) - db.db.table.col"
 
 (*** Predicate parsers ***)
+
 let equal_p = infix_op_p "=" equal
 let not_equal_p = infix_op_p "!=" notequal
 let less_p = infix_op_p "<" less
@@ -260,7 +239,7 @@ let atom_predicate_p =
   let pred_p =
     equal_p <|> not_equal_p <|> less_or_eq_p <|> greater_or_eq_p <|> less_p <|> greater_p
   in
-  lift3 (fun x pred y -> pred x y) expr_p pred_p expr_p
+  lift3 (fun x pred y -> pred x y) atom_expr_p pred_p atom_expr_p
 ;;
 
 let and_p = infix_op_p ~ci:true "AND" andpred
@@ -328,6 +307,41 @@ let%test _ =
        , Less (Arithm (Column "A"), Arithm (Column "B")) ))
 ;;
 
+(*** Expression parser *)
+let expr_p = predicate_p >>| predexpr <|> (atom_expr_p >>| atomexpr)
+
+(*** Projection item parsers ***)
+let star_p = lspaces (char '*')
+let as_p = spaces (string_ci "AS")
+
+let alias_p =
+  option "" as_p
+  >>= function
+  | "" -> return None
+  | _ -> entity_name_p >>| fun name -> Some name
+;;
+
+let single_item_p = lift2 projatomitem expr_p alias_p
+let proj_item_p = star_p *> return Star <|> single_item_p
+let assert_ok_proj s expected = assert_ok show_projection_item proj_item_p s expected
+
+let%test _ = assert_ok_proj "*" Star
+let%test _ = assert_ok_proj " *" Star
+
+let%test _ =
+  assert_ok_proj "1 +3" (ProjAtomItem (AtomExpr (Arithm (Plus (Int 1, Int 3))), None))
+;;
+
+let%test _ =
+  assert_ok_proj "col as A" (ProjAtomItem (AtomExpr (Arithm (Column "col")), Some "A"))
+;;
+
+let%test _ =
+  assert_ok_proj
+    "2 * col as Alias"
+    (ProjAtomItem (AtomExpr (Arithm (Mult (Int 2, Column "col"))), Some "Alias"))
+;;
+
 (*** Order by item parsers ***)
 
 let asc_p = string_ci "ASC" *> return asc
@@ -346,11 +360,16 @@ let assert_ok_orderby s expected =
   assert_ok show_orderby_clause orderby_clause_p s expected
 ;;
 
-let%test _ = assert_ok_orderby "1 + 1" (Asc (Arithm (Plus (Int 1, Int 1))))
-let%test _ = assert_ok_orderby "1 + A desc" (Desc (Arithm (Plus (Int 1, Column "A"))))
+let%test _ = assert_ok_orderby "1 + 1" (Asc (AtomExpr (Arithm (Plus (Int 1, Int 1)))))
 
 let%test _ =
-  assert_ok_orderby "Desc / Asc" (Asc (Arithm (Div (Column "Desc", Column "Asc"))))
+  assert_ok_orderby "1 + A desc" (Desc (AtomExpr (Arithm (Plus (Int 1, Column "A")))))
+;;
+
+let%test _ =
+  assert_ok_orderby
+    "Desc / Asc"
+    (Asc (AtomExpr (Arithm (Div (Column "Desc", Column "Asc")))))
 ;;
 
 let%test _ = assert_error orderby_clause_p "1 + A sc"

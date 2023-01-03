@@ -34,6 +34,8 @@ OR:
 
 *)
 
+let printer_ignore show fmt expr = Format.fprintf fmt "%s" (show expr)
+
 type name = string [@@deriving show { with_path = false }]
 
 type arithm_expression =
@@ -45,27 +47,31 @@ type arithm_expression =
   | Div of arithm_expression * arithm_expression
 [@@deriving show { with_path = false }, variants]
 
-type expression =
-  | Arithm of arithm_expression
-      [@printer fun fmt expr -> fprintf fmt "%s" (show_arithm_expression expr)]
+type atom_expression =
+  | Arithm of arithm_expression [@printer printer_ignore show_arithm_expression]
   (* To forbid ill-formed arithmetic expressions with strings on the parser level *)
   | String of string (** Any single quoted string *)
-[@@deriving show { with_path = false }, variants]
-
-type projection_item =
-  | Star
-  | AtomItem of expression * name option
 [@@deriving show { with_path = false }, variants]
 
 type predicate =
   | OrPred of predicate * predicate
   | AndPred of predicate * predicate
-  | Equal of expression * expression
-  | NotEqual of expression * expression
-  | Less of expression * expression
-  | Greater of expression * expression
-  | LessOrEq of expression * expression
-  | GreaterOrEq of expression * expression
+  | Equal of atom_expression * atom_expression
+  | NotEqual of atom_expression * atom_expression
+  | Less of atom_expression * atom_expression
+  | Greater of atom_expression * atom_expression
+  | LessOrEq of atom_expression * atom_expression
+  | GreaterOrEq of atom_expression * atom_expression
+[@@deriving show { with_path = false }, variants]
+
+type expression =
+  | AtomExpr of atom_expression [@printer printer_ignore show_atom_expression]
+  | PredExpr of predicate [@printer printer_ignore show_predicate]
+[@@deriving show { with_path = false }, variants]
+
+type projection_item =
+  | Star
+  | ProjAtomItem of expression * name option
 [@@deriving show { with_path = false }, variants]
 
 type where_clause = predicate [@@deriving show { with_path = false }]

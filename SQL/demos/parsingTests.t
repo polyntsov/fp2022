@@ -21,8 +21,8 @@ answer is correct
   > and lo_quantity < 25
   Select {
     projection =
-    [(AtomItem ((Column "lo_extendedprice"), (Some "price")));
-      (AtomItem ((Column "lo_discount"), (Some "discount")))];
+    [(ProjAtomItem ((Column "lo_extendedprice"), (Some "price")));
+      (ProjAtomItem ((Column "lo_discount"), (Some "discount")))];
     from = [(Table "lineorder"); (Table "date")];
     where =
     (Some (AndPred (
@@ -49,9 +49,9 @@ answer is correct
   > order by d_year, p_brand1
   Select {
     projection =
-    [(AtomItem ((Column "lo_revenue"), None));
-      (AtomItem ((Column "d_year"), None));
-      (AtomItem ((Column "p_brand1"), None))];
+    [(ProjAtomItem ((Column "lo_revenue"), None));
+      (ProjAtomItem ((Column "d_year"), None));
+      (ProjAtomItem ((Column "p_brand1"), None))];
     from =
     [(Table "lineorder"); (Table "date"); (Table "part"); (Table "supplier")];
     where =
@@ -84,10 +84,10 @@ answer is correct
   > order by d_year asc, revenue desc
   Select {
     projection =
-    [(AtomItem ((Column "c_city"), None));
-      (AtomItem ((Column "s_city"), None));
-      (AtomItem ((Column "d_year"), None));
-      (AtomItem ((Column "lo_revenue"), (Some "revenue")))];
+    [(ProjAtomItem ((Column "c_city"), None));
+      (ProjAtomItem ((Column "s_city"), None));
+      (ProjAtomItem ((Column "d_year"), None));
+      (ProjAtomItem ((Column "lo_revenue"), (Some "revenue")))];
     from =
     [(Table "customer"); (Table "lineorder"); (Table "supplier");
       (Table "date")];
@@ -128,9 +128,9 @@ answer is correct
   > ORDER BY t1.a + t2.a + t3.a + t3.a desc, table.b * 666
   Select {
     projection =
-    [(AtomItem ((Column "t1.id"), None));
-      (AtomItem ((Minus ((Column "t2.a"), (Column "t3.b"))), None));
-      (AtomItem ((Plus ((Int 2), (Int 2))), None)); Star; Star];
+    [(ProjAtomItem ((Column "t1.id"), None));
+      (ProjAtomItem ((Minus ((Column "t2.a"), (Column "t3.b"))), None));
+      (ProjAtomItem ((Plus ((Int 2), (Int 2))), None)); Star; Star];
     from =
     [Join {left = (Table "table");
        right =
@@ -166,3 +166,18 @@ answer is correct
               (Plus ((Plus ((Plus ((Column "t1.a"), (Column "t2.a"))), (Column "t3.a"))),
      (Column "t3.a"))));
             (Asc (Mult ((Column "table.b"), (Int 666))))])}
+
+  $ ./demoParse.exe <<-EOF
+  > SELECT *, a < b, 1 + 1 AS jon FROM t1
+  Select {
+    projection =
+    [Star; (ProjAtomItem ((Less ((Column "a"), (Column "b"))), None));
+      (ProjAtomItem ((Plus ((Int 1), (Int 1))), (Some "jon")))];
+    from = [(Table "t1")]; where = None; orderby = None}
+
+  $ ./demoParse.exe <<-EOF
+  > SELECT 'abc' FROM table WHERE A < 'bca' ORDER BY id1 < id2
+  Select {projection = [(ProjAtomItem ((String "abc"), None))];
+    from = [(Table "table")];
+    where = (Some (Less ((Column "A"), (String "bca"))));
+    orderby = (Some [(Asc (Less ((Column "id1"), (Column "id2"))))])}
