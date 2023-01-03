@@ -234,6 +234,12 @@ let less_p = infix_op_p "<" less
 let greater_p = infix_op_p ">" greater
 let less_or_eq_p = infix_op_p "<=" lessoreq
 let greater_or_eq_p = infix_op_p ">=" greateroreq
+let pred_equal_p = infix_op_p "=" predequal
+let pred_not_equal_p = infix_op_p "!=" prednotequal
+let pred_less_p = infix_op_p "<" predless
+let pred_greater_p = infix_op_p ">" predgreater
+let pred_less_or_eq_p = infix_op_p "<=" predlessoreq
+let pred_greater_or_eq_p = infix_op_p ">=" predgreateroreq
 
 let atom_predicate_p =
   let pred_p =
@@ -247,7 +253,18 @@ let or_p = infix_op_p ~ci:true "OR" orpred
 
 let predicate_p =
   fix (fun expr ->
-    let factor = parens_p expr <|> atom_predicate_p in
+    let pred_predicate_p =
+      let pred_pred_p =
+        pred_equal_p
+        <|> pred_not_equal_p
+        <|> pred_less_or_eq_p
+        <|> pred_greater_or_eq_p
+        <|> pred_less_p
+        <|> pred_greater_p
+      in
+      lift3 (fun x pred y -> pred x y) (parens_p expr) pred_pred_p (parens_p expr)
+    in
+    let factor = pred_predicate_p <|> parens_p expr <|> atom_predicate_p in
     let term = chainl1_p factor and_p in
     chainl1_p term or_p)
 ;;
@@ -306,6 +323,16 @@ let%test _ =
            , GreaterOrEq (Arithm (Plus (Int 1, Int 1)), Arithm (Int 2)) )
        , Less (Arithm (Column "A"), Arithm (Column "B")) ))
 ;;
+
+let%test _ =
+  assert_ok_pred
+    "(A < C) < (D < B)"
+    (PredLess
+       ( Less (Arithm (Column "A"), Arithm (Column "C"))
+       , Less (Arithm (Column "D"), Arithm (Column "B")) ))
+;;
+
+let%test _ = assert_error predicate_p "A < C < D < B"
 
 (*** Expression parser *)
 let expr_p = predicate_p >>| predexpr <|> (atom_expr_p >>| atomexpr)

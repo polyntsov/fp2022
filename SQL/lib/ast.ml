@@ -56,6 +56,12 @@ type atom_expression =
 type predicate =
   | OrPred of predicate * predicate
   | AndPred of predicate * predicate
+  | PredEqual of predicate * predicate
+  | PredNotEqual of predicate * predicate
+  | PredLess of predicate * predicate
+  | PredGreater of predicate * predicate
+  | PredLessOrEq of predicate * predicate
+  | PredGreaterOrEq of predicate * predicate
   | Equal of atom_expression * atom_expression
   | NotEqual of atom_expression * atom_expression
   | Less of atom_expression * atom_expression

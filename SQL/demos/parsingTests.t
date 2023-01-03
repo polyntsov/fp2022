@@ -168,16 +168,57 @@ answer is correct
             (Asc (Mult ((Column "table.b"), (Int 666))))])}
 
   $ ./demoParse.exe <<-EOF
-  > SELECT *, a < b, 1 + 1 AS jon FROM t1
+  > SELECT *, a < b, 1 + 1, 'abc' AS jon, id=id,
+  >        (id=id), (a + c) = (b - d), a+c=b-d,
+  >        (a < c) < (b < d),
+  >        ((id = id) = (id=id)) = ((id = id) = (id=id)),
+  >        id = id OR id = id OR id = id,
+  >        ( ( (a=a) =(a = a)) = ( (a=a)=(a=a) ) OR 1=1 ) = (a=a)
+  > FROM t1
   Select {
     projection =
     [Star; (ProjAtomItem ((Less ((Column "a"), (Column "b"))), None));
-      (ProjAtomItem ((Plus ((Int 1), (Int 1))), (Some "jon")))];
+      (ProjAtomItem ((Plus ((Int 1), (Int 1))), None));
+      (ProjAtomItem ((String "abc"), (Some "jon")));
+      (ProjAtomItem ((Equal ((Column "id"), (Column "id"))), None));
+      (ProjAtomItem ((Equal ((Column "id"), (Column "id"))), None));
+      (ProjAtomItem (
+         (Equal ((Plus ((Column "a"), (Column "c"))),
+     (Minus ((Column "b"), (Column "d"))))),
+         None));
+      (ProjAtomItem (
+         (Equal ((Plus ((Column "a"), (Column "c"))),
+     (Minus ((Column "b"), (Column "d"))))),
+         None));
+      (ProjAtomItem (
+         (PredLess ((Less ((Column "a"), (Column "c"))),
+     (Less ((Column "b"), (Column "d"))))),
+         None));
+      (ProjAtomItem (
+         (PredEqual (
+     (PredEqual ((Equal ((Column "id"), (Column "id"))),
+        (Equal ((Column "id"), (Column "id"))))),
+     (PredEqual ((Equal ((Column "id"), (Column "id"))),
+        (Equal ((Column "id"), (Column "id")))))
+     )),
+         None));
+      (ProjAtomItem (
+         (OrPred (
+     (OrPred ((Equal ((Column "id"), (Column "id"))),
+        (Equal ((Column "id"), (Column "id"))))),
+     (Equal ((Column "id"), (Column "id"))))),
+         None));
+      (ProjAtomItem (
+         (PredEqual (
+     (OrPred (
+        (PredEqual (
+           (PredEqual ((Equal ((Column "a"), (Column "a"))),
+              (Equal ((Column "a"), (Column "a"))))),
+           (PredEqual ((Equal ((Column "a"), (Column "a"))),
+              (Equal ((Column "a"), (Column "a")))))
+           )),
+        (Equal ((Int 1), (Int 1))))),
+     (Equal ((Column "a"), (Column "a"))))),
+         None))
+      ];
     from = [(Table "t1")]; where = None; orderby = None}
-
-  $ ./demoParse.exe <<-EOF
-  > SELECT 'abc' FROM table WHERE A < 'bca' ORDER BY id1 < id2
-  Select {projection = [(ProjAtomItem ((String "abc"), None))];
-    from = [(Table "table")];
-    where = (Some (Less ((Column "A"), (String "bca"))));
-    orderby = (Some [(Asc (Less ((Column "id1"), (Column "id2"))))])}
