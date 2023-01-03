@@ -154,7 +154,7 @@ let string_value_p =
   lspaces string_value_p
 ;;
 
-let parens_p p = lspaces (char '(' *> p <* char ')')
+let parens_p p = lspaces (char '(' *> p <* lspaces (char ')'))
 
 let infix_op_p ?(ci = false) str_op cons =
   let infix_op_p = (if ci then string_ci else Angstrom.string) str_op *> return cons in
