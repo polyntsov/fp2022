@@ -17,6 +17,7 @@ type order_expr
 (* преобразование от аст к интепретируемому виду?
    там проверки типов + поиск нужных таблиц и колонок по каталогу.
    Как должны выглядеть исполняемые предикаты? Колонки или индексы?
+   select * from t1;
 *)
 
 type expression =
@@ -58,19 +59,6 @@ type operator =
       ; order_expr : order_expr
       }
 
-(*let transform ast c =
-  let rec ds_collect_tables = function
-    | Table name ->
-      (match Catalog.get_table name c with
-       | Some t -> t
-       | None -> M.fail (UnknownVariable ""))
-       | Join { left; right; _ } -> ds_collect_tables left @ ds_collect_tables right)
-  in
-  ()
-;;*)
-
-module GenerateFail = struct end
-
 type plan = unit -> (Relation.t, error) result
 
 module type Operator = sig
@@ -98,55 +86,68 @@ end
 
 module type SDatasource = Operator with type arg := name
 
-module Datasource (M : MonadFail) (C : SCatalog) : SDatasource = struct
+module type Environment = sig
+  val catalog_path : string
+  val catalog : catalog
+  val storage : Relation.AccessManager.storage
+end
+
+module Datasource (M : MonadFail) (E : Environment) : SDatasource = struct
   open M
 
-  let cons_execute tablename () =
-    let table =
-      match C.get_table tablename (C.create ()) with
+  let cons_execute tablename () = fail (UnknownTable tablename)
+  (*let table =
+      match Catalog.get_table tablename (Catalog.load ".") with
       | Some t -> return t
       | None -> fail (UnknownTable tablename)
     in
-    table >>| Relation.load
-  ;;
+    table >>| Relation.load*)
 end
 
-module QueryGenerator (M : MonadFail) (C : SCatalog) : sig
+module QueryGenerator (M : MonadFail) (E : Environment) : sig
   val generate : Ast.statement -> (plan, Utils.error) M.t
 end = struct
+  let get_from_tables from =
+    let open Result in
+    let rec helper = function
+      | Table name ->
+        (match Catalog.get_table_ci name E.catalog with
+         | [] -> Error (UnknownTable name)
+         | _t1 :: _t2 :: _ -> Error (AmbiguousTable name)
+         | t -> Ok t)
+      | Join { left; right } ->
+        helper left >>= fun head -> helper right >>= fun tail -> Ok (head @ tail)
+    in
+    List.fold from ~init:(Ok []) ~f:(fun acc tables ->
+      acc >>= fun acc -> helper tables >>= fun tables -> Ok (acc @ tables))
+  ;;
+
   let generate ast =
-    let module DS = Datasource (M) (C) in
+    let module DS = Datasource (M) (E) in
     M.return (DS.cons_execute "t1")
   ;;
 end
 
-module Interpret (M : MonadFail) (C : SCatalog) : sig
+module Interpret (M : MonadFail) (E : Environment) : sig
   val run : Ast.statement -> (Relation.t, Utils.error) M.t
 end = struct
   open M
 
   let run ast =
     let plan =
-      let module Generator = QueryGenerator (M) (C) in
+      let module Generator = QueryGenerator (M) (E) in
       Generator.generate ast
     in
     plan >>= fun plan -> plan ()
   ;;
 end
 
-(*let parse_and_run str =
+let interpret query (module E : Environment) =
   let ans =
-    let module I = Interpret (Result) (Catalog) in
-    match Parser.parse str with
-    | Caml.Result.Ok ast ->
-      (match I.run ast with
-       | Caml.Result.Ok rel -> rel
-       | Caml.Result.Error msg ->
-         Caml.Format.eprintf "Interpretation error: %s\n%!" msg;
-         Caml.exit 1)
-    | Caml.Result.Error msg ->
-      Caml.Format.eprintf "Parsing error: %s\n%!" msg;
-      Caml.exit 1
+    let module I = Interpret (Result) (E) in
+    match Parser.parse query with
+    | Caml.Result.Ok ast -> I.run ast
+    | Caml.Result.Error error -> Result.fail (ParsingError error)
   in
   ans
-;;*)
+;;
