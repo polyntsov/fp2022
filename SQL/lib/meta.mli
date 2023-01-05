@@ -45,6 +45,10 @@ type catalog
   the tables
 *)
 
+module Database : sig
+  val get_name : database -> string
+end
+
 module Catalog : sig
   (** [create path] creates new catalog in [path] directory,
       throws an exception if one already exists *)
