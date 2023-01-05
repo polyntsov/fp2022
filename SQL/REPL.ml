@@ -49,31 +49,32 @@ let () =
     let catalog = Meta.Catalog.init catalog_path in
     match opts.make_db_from with
     | None ->
-      let module Env : Interpret.Environment = struct
+      let module Env : Utils.Environment = struct
         let catalog_path = catalog_path
         let catalog = catalog
 
-        let storage =
-          let dbname =
-            match opts.dbname with
+        let db =
+          let storage =
+            let dbname =
+              match opts.dbname with
+              | None ->
+                Format.eprintf
+                  "Changing database via repl commands is not supported yet, please \
+                   specify it using '-db' command line option";
+                Caml.exit 1
+              | Some dbname -> dbname
+            in
+            match Meta.Catalog.get_db dbname catalog with
             | None ->
-              Format.eprintf
-                "Changing database via repl commands is not supported yet, please \
-                 specify it using '-db' command line option";
+              Format.eprintf "No database named %s" dbname;
               Caml.exit 1
-            | Some dbname -> dbname
+            | Some db -> Relation.AccessManager.set_active db None catalog
           in
-          match Meta.Catalog.get_db dbname catalog with
-          | None ->
-            Format.eprintf "No database named %s" dbname;
-            Caml.exit 1
-          | Some db -> Relation.AccessManager.set_active db None catalog
+          Relation.AccessManager.get_active_db storage
         ;;
       end
       in
-      Format.printf
-        "Connected to %s\n%!"
-        (Meta.Database.get_name (Relation.AccessManager.get_active_db Env.storage));
+      Format.printf "Connected to %s\n%!" (Meta.Database.get_name Env.db);
       if opts.batch then run_single (module Env) else run_repl ()
     | Some path ->
       let _c = Relation.AccessManager.make_db_from path catalog in
