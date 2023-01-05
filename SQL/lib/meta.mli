@@ -2,13 +2,17 @@
 
 (** SPDX-License-Identifier: LGPL-3.0-or-later *)
 
-(** Functions and types to work with DBMS entities such as catalog, databases, tables and columns *)
+(** Functions and types to work with DBMS entities such as catalog,
+    databases, tables and columns *)
 
 (** Type of values that the column stores *)
 type column_type =
   | IntCol
   | StringCol
 [@@deriving yojson]
+
+val column_type_to_string : column_type -> string
+val column_type_of_string : string -> column_type
 
 (** Table attribute, constitutes column's name and type *)
 type column
@@ -22,7 +26,7 @@ type table
 (** Database represented as a named list of tables *)
 type database
 
-(** Catalog represented as list of databases, there should be only one catalog *)
+(** Catalog represented as list of databases, there is only one catalog *)
 type catalog
 (** Catalog is stored with this directory structure:
    _catalog/┌──►Catalog.meta.json
@@ -37,51 +41,68 @@ type catalog
                                │
                                └───►Table3
   Catalog.meta.json contains all information about this catalog,
-  i.e. all databases (identified by their names), their tables, headers of the tables
+  i.e. all databases (identified by their names), their tables, headers of
+  the tables
 *)
 
-type tuple_element =
-  | Int of int
-  | String of string
+module Catalog : sig
+  (** [create path] creates new catalog in [path] directory,
+      throws an exception if one already exists *)
+  val create : string -> catalog
 
-module Tuple : sig
-  type t
+  (** [load path] loads catalog from the [path] directory and returns it *)
+  val load : string -> catalog
 
-  val from_string : string list -> header -> t
-  val to_string : t -> string list
-end
+  (** [init path] as [load] but if catalog does not exist yet creates
+      a new empty one *)
+  val init : string -> catalog
 
-module Relation : sig
-  type t
+  (** [recreate path] creates new catalog in [path] directory as [create],
+      but if it already exists drops it and creates a new emtpy one *)
+  val recreate : string -> catalog
 
-  val load : table -> t
-  val to_tuple_list : t -> Tuple.t list
-end
+  (** [dump c] writes catalog [c] to the disk to catalog's path *)
+  val dump : catalog -> unit
 
-module type SCatalog = sig
-  (** [create ()] loads existing catalog or creates a new empty one if none exists *)
-  val create : unit -> catalog
+  (** [drop c] deletes catalog [c] from the disk *)
+  val drop : catalog -> unit
 
-  (** [drop ()] deletes current catalog and returns a new empty one *)
-  val drop : unit -> catalog
-
-  (** [create_db name c] creates a new empty database named [name] in corresponding catalog [c] *)
+  (** [create_db name c] creates a new empty database named [name] in
+      corresponding catalog [c] *)
   val create_db : string -> catalog -> database * catalog
 
-  (** [create_table name db] creates a new empty table named [name] in corresponding database [db] *)
-  val create_table : string -> database -> table * catalog
+  (** [create_table name db] creates a new empty table named [name] in
+      corresponding database [db] *)
+  val create_table : string -> database -> catalog -> table * catalog
 
-  (** [create_cols cols_list table] creates columns from [cols_list] and inserts them into [table]  *)
-  val create_cols : (string * column_type) list -> table -> table * catalog
-
-  (** [dump c] converts [c] to json and writes it to the disk *)
-  val dump : catalog -> unit
+  (** [create_cols cols_list table] creates columns from [cols_list] list
+      of <name, type> pairs and inserts them into [table] *)
+  val create_cols : (string * column_type) list -> table -> catalog -> table * catalog
 
   (** [to_string c] converts [c] to json string *)
   val to_string : catalog -> string
 
-  (** [get_table name c] returns [Some table] with name [name] or [None] if none exists *)
-  val get_table : string -> catalog -> table option
-end
+  (** [get_db name c] returns [Some database] with name [name] or
+      [None] if none exists *)
+  val get_db : string -> catalog -> database option
 
-module Catalog : SCatalog
+  (** [get_table name c] returns list of tables with name equal
+      to [name] ignoring case *)
+  val get_table_ci : string -> catalog -> table list
+
+  (** [get_table_path table] returns path to the table *)
+  val get_table_path : table -> catalog -> string
+
+  (** [get_dbs c] returns all databases in [c] *)
+  val get_dbs : catalog -> database list
+
+  (** [get_tables db c] returns all tables in database [db] *)
+  val get_tables : database -> table list
+
+  (** [get_table db name] returns table named [name] as [Some table] or
+      [None] if there is no such table in database [db] *)
+  val get_table : database -> string -> table option
+
+  (** [get_table_types t] returns a list of table [t] column types *)
+  val get_table_types : table -> column_type list
+end

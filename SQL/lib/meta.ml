@@ -10,31 +10,69 @@ type column_type =
 type column =
   { cname : string
   ; ctype : column_type
-  ; table : table
   }
 [@@deriving yojson]
 
-and header = column list [@@deriving yojson]
+type header = column list [@@deriving yojson]
 
-and table =
+type table =
   { tname : string
-  ; db : database
   ; header : header
   }
 [@@deriving yojson]
 
-and database =
+type database =
   { dname : string
-  ; catalog : catalog
   ; tables : table list
   }
 [@@deriving yojson]
 
-and catalog = Catalog of database list [@@deriving yojson]
+type catalog =
+  { dbs : database list
+  ; cpath : string
+  }
+[@@deriving yojson]
+
+let column_type_to_string = function
+  | IntCol -> "IntCol"
+  | StringCol -> "StringCol"
+;;
+
+let column_type_of_string = function
+  | "IntCol" -> IntCol
+  | "StringCol" -> StringCol
+  | _ -> raise (Failure "Unkown column type")
+;;
+
+let file_perm = 0o775
+
+module Table = struct
+  let create_col cname coltype ({ header } as table) =
+    let col = { cname; ctype = coltype } in
+    col, { table with header = col :: header }
+  ;;
+
+  let create_cols args table =
+    List.fold_right
+      (fun (cname, coltype) table -> snd (create_col cname coltype table))
+      args
+      table
+  ;;
+
+  let get_name { tname } = tname
+  let get_header { header } = header
+
+  let get_column_names table =
+    get_header table |> fun cols -> List.map (fun { cname } -> cname) cols
+  ;;
+
+  let add_column col ({ header = cols } as t) = { t with header = col :: cols }
+  let add_columns cols table = List.fold_right add_column cols table
+  let get_column t index = List.nth (get_header t) index
+end
 
 module Database = struct
   let get_name { dname } = dname
-  let get_catalog { catalog } = catalog
   let table_exists table { tables } = List.mem table tables
 
   let load path =
@@ -42,48 +80,27 @@ module Database = struct
     load_table path
   ;;
 
-  let add_table table { dname; catalog; tables } =
-    { dname; catalog; tables = table :: tables }
+  let add_table table ({ tables } as db) = { db with tables = table :: tables }
+
+  let delete_table table { dname; tables } =
+    { dname; tables = List.filter (( != ) table) tables }
   ;;
 
-  let delete_table table { dname; catalog; tables } =
-    { dname; catalog; tables = List.filter (( != ) table) tables }
+  let update_table old_table new_table db =
+    delete_table old_table db |> add_table new_table
   ;;
 
   let create_table tname db =
-    let t = { tname; db; header = [] } in
+    let t = { tname; header = [] } in
     t, add_table t db
   ;;
 
-  let dump path db = Sys.mkdir (Filename.concat path (get_name db)) 0o775
-  let update_table table db = delete_table table db |> add_table table
-  let find_table name { tables } = List.find_opt (fun { tname } -> name = tname) tables
-end
+  let dump path db = Sys.mkdir (Filename.concat path (get_name db)) file_perm
 
-module Table = struct
-  let create_col cname coltype ({ header } as table) =
-    let col = { cname; ctype = coltype; table } in
-    col, { table with header = col :: header }
+  let find_table ?(ci = false) name { tables } =
+    let op = if ci then Base.String.Caseless.( = ) else ( = ) in
+    List.find_opt (fun { tname } -> op name tname) tables
   ;;
-
-  let rec create_cols args table =
-    List.fold_right
-      (fun (cname, coltype) table -> snd (create_col cname coltype table))
-      args
-      table
-  ;;
-
-  let get_fullname { tname; db } = Printf.sprintf "%s.%s" (Database.get_name db) tname
-  let get_name { tname } = tname
-  let get_header { header } = header
-  let get_db { db } = db
-
-  let get_column_names table =
-    get_header table |> fun cols -> List.map (fun { cname } -> cname) cols
-  ;;
-
-  let add_column col { tname; db; header = cols } = { tname; db; header = col :: cols }
-  let rec add_columns cols table = List.fold_right add_column cols table
 end
 
 let rec rm_non_empty_dir path =
@@ -95,139 +112,103 @@ let rec rm_non_empty_dir path =
   | false -> Sys.remove path
 ;;
 
-(* Copy-paste from .mli file to make it compile (why does it work like this?) *)
-module type SCatalog = sig
-  val create : unit -> catalog
-  val drop : unit -> catalog
-  val create_db : string -> catalog -> database * catalog
-  val create_table : string -> database -> table * catalog
-  val create_cols : (string * column_type) list -> table -> table * catalog
-  val dump : catalog -> unit
-  val to_string : catalog -> string
-  val get_table : string -> catalog -> table option
-end
-
 module Catalog = struct
-  let add_db db (Catalog dbs) = Catalog (db :: dbs)
-  let delete_db db (Catalog dbs) = Catalog (List.filter (( != ) db) dbs)
+  let add_db db ({ dbs = old_dbs } as c) = { c with dbs = db :: old_dbs }
+
+  let delete_db db ({ dbs = old_dbs } as c) =
+    { c with dbs = List.filter (( != ) db) old_dbs }
+  ;;
 
   let create_db name c =
-    let db = { dname = name; catalog = c; tables = [] } in
+    let db = { dname = name; tables = [] } in
     db, add_db db c
   ;;
 
-  let update_db db =
-    let c = Database.get_catalog db in
-    delete_db db c |> add_db db
+  let find_table_db table { dbs } = List.find (Database.table_exists table) dbs
+  let update_db old_db new_db c = delete_db old_db c |> add_db new_db
+
+  let update_table old_table new_table c =
+    let old_db = find_table_db old_table c in
+    let new_db = Database.update_table old_table new_table old_db in
+    update_db old_db new_db c
   ;;
 
-  let update_table table =
-    let db = Table.get_db table in
-    Database.update_table table db |> update_db
+  let create_table tname old_db c =
+    let t, new_db = Database.create_table tname old_db in
+    t, update_db old_db new_db c
   ;;
 
-  let create_table tname db =
-    let t, db = Database.create_table tname db in
-    t, update_db db
+  let create_col cname coltype old_table c =
+    let col, new_table = Table.create_col cname coltype old_table in
+    col, update_table old_table new_table c
   ;;
 
-  let create_col cname coltype table =
-    let col, t = Table.create_col cname coltype table in
-    col, update_table t
+  let create_cols args old_table c =
+    let new_table = Table.create_cols args old_table in
+    new_table, update_table old_table new_table c
   ;;
 
-  let create_cols args table =
-    let t = Table.create_cols args table in
-    t, update_table t
+  let catalog_dir = "_catalog"
+  let get_catalog_dir path = Filename.concat path catalog_dir
+  let get_path { cpath } = cpath
+
+  let meta path =
+    assert (Filename.check_suffix path catalog_dir);
+    Filename.concat path "Catalog.meta.json"
   ;;
 
-  (* FIXME *)
-  let path = "/home/arno/prog/spbu/fp/fp2022/SQL/_catalog/"
-  let meta = Filename.concat path "Catalog.meta.json"
-  let database_exists db (Catalog dbs) = List.mem db dbs
+  let database_exists db { dbs } = List.mem db dbs
   let to_string catalog = Yojson.Safe.to_string (yojson_of_catalog catalog)
+  let get_path_to_db { dname } c = Filename.concat (get_path c) dname
+  let catalog_exists c = Sys.file_exists (get_path c)
 
-  let get_path_to_db = function
-    | { dname } -> Filename.concat path dname
+  let create path =
+    let cpath = get_catalog_dir path in
+    if Sys.file_exists cpath
+    then raise (Failure "catalog already exists")
+    else { dbs = []; cpath }
   ;;
 
-  let get_path_to_table = function
-    | { tname; db } -> Filename.concat (get_path_to_db db) tname
+  let load path =
+    let cpath = get_catalog_dir path in
+    let meta_path = meta cpath in
+    if Sys.file_exists meta_path
+    then (
+      try catalog_of_yojson (Yojson.Safe.from_file meta_path) with
+      | _ -> raise (Failure (Format.sprintf "Meta file %s has wrong format." meta_path)))
+    else raise (Failure "Meta does not exist")
   ;;
 
-  let dump (Catalog dbs as catalog) =
-    if not (Sys.file_exists path) then Sys.mkdir path 0o775;
-    Yojson.Safe.to_file meta (yojson_of_catalog catalog);
-    List.iter (Database.dump path) dbs
+  let init path =
+    let cpath = get_catalog_dir path in
+    let meta_path = meta cpath in
+    if not (Sys.file_exists meta_path) then create path else load path
   ;;
 
-  let load meta =
-    if Sys.file_exists meta
-    then Some (catalog_of_yojson (Yojson.Safe.from_file meta))
-    else None
+  let recreate path =
+    let cpath = get_catalog_dir path in
+    if Sys.file_exists cpath then rm_non_empty_dir cpath;
+    create path
   ;;
 
-  let create () =
-    match load meta with
-    | Some catalog -> catalog
-    | None -> Catalog []
+  let dump ({ dbs; cpath } as catalog) =
+    if not (catalog_exists catalog) then Sys.mkdir cpath file_perm;
+    Yojson.Safe.to_file (meta cpath) (yojson_of_catalog catalog);
+    List.iter (Database.dump cpath) dbs
   ;;
 
-  let drop () =
-    if Sys.file_exists path then rm_non_empty_dir path;
-    create ()
+  let drop ({ cpath } as c) = if catalog_exists c then rm_non_empty_dir cpath
+  let get_db name { dbs } = List.find_opt (fun { dname } -> dname = name) dbs
+  let get_table_ci name { dbs } = List.filter_map (Database.find_table ~ci:true name) dbs
+
+  let get_table_path ({ tname } as t) c =
+    let db_path = get_path_to_db (find_table_db t c) c in
+    Filename.concat db_path tname
   ;;
 
-  let get_table name (Catalog dbs) = List.find_map (Database.find_table name) dbs
+  let get_dbs { dbs } = dbs
+  let get_tables { tables } = tables
+  let get_table { tables } name = List.find_opt (fun { tname } -> tname = name) tables
+  let get_table_types table = List.map (fun { ctype } -> ctype) (Table.get_header table)
+  let get_db name c = List.find_opt (fun db -> Database.get_name db = name) (get_dbs c)
 end
-
-type tuple_element =
-  | Int of int
-  | String of string
-
-module Tuple = struct
-  type t = tuple_element array
-
-  let from_string string_tuple hdr =
-    Array.of_list
-      (List.map2
-         (fun string_value { cname; ctype } ->
-           Format.printf "value %s %s\n" string_value cname;
-           match ctype with
-           | IntCol -> Int (int_of_string string_value)
-           | StringCol -> String string_value)
-         string_tuple
-         hdr)
-  ;;
-
-  let to_string tuple =
-    Array.to_list
-      (Array.map
-         (fun value ->
-           match value with
-           | Int i -> string_of_int i
-           | String s -> s)
-         tuple)
-  ;;
-
-  let at index tuple = Array.get tuple index
-end
-
-module Relation = struct
-  type t = Tuple.t list
-
-  let load table =
-    let string_rel =
-      List.map
-        (fun row -> Csv.Row.to_list row)
-        (Csv.Rows.load (Catalog.get_path_to_table table))
-    in
-    List.map
-      (fun string_tuple -> Tuple.from_string string_tuple (Table.get_header table))
-      string_rel
-  ;;
-
-  let to_tuple_list rel = rel
-end
-
-module Access = struct end
