@@ -36,7 +36,7 @@ let db =
 ;;
 
 let t1 =
-  let t1_opt = Catalog.get_table db t_name in
+  let t1_opt = Database.get_table t_name db in
   match t1_opt with
   | Some t1 -> t1
   | None -> raise Not_found

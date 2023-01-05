@@ -13,6 +13,8 @@ type column =
   }
 [@@deriving yojson]
 
+let column_type { ctype } = ctype
+
 type header = column list [@@deriving yojson]
 
 type table =
@@ -33,6 +35,8 @@ type catalog =
   }
 [@@deriving yojson]
 
+exception AmbiguousEntity
+
 let column_type_to_string = function
   | IntCol -> "IntCol"
   | StringCol -> "StringCol"
@@ -45,6 +49,12 @@ let column_type_of_string = function
 ;;
 
 let file_perm = 0o775
+
+let get_ci = function
+  | [] -> raise Not_found
+  | [ entity ] -> entity
+  | _ -> raise AmbiguousEntity
+;;
 
 module Table = struct
   let create_col cname coltype ({ header } as table) =
@@ -59,20 +69,36 @@ module Table = struct
       table
   ;;
 
-  let get_name { tname } = tname
-  let get_header { header } = header
+  let name { tname } = tname
+  let header { header } = header
 
   let get_column_names table =
-    get_header table |> fun cols -> List.map (fun { cname } -> cname) cols
+    header table |> fun cols -> List.map (fun { cname } -> cname) cols
   ;;
 
   let add_column col ({ header = cols } as t) = { t with header = col :: cols }
   let add_columns cols table = List.fold_right add_column cols table
-  let get_column t index = List.nth (get_header t) index
+  let get_column index t = List.nth (header t) index
+  let col_fullname { cname } t = Format.sprintf "%s.%s" (name t) cname
+
+  let cols_as_fullnames ({ header } as t) =
+    List.map (fun col -> col_fullname col t) header
+  ;;
+
+  let get_col_ci name { header } =
+    let cols =
+      let open Base.String.Caseless in
+      List.filter (fun { cname } -> cname = name) header
+    in
+    get_ci cols
+  ;;
+
+  let column_exists col { header } = List.mem col header
 end
 
 module Database = struct
   let get_name { dname } = dname
+  let get_tables { tables } = tables
   let table_exists table { tables } = List.mem table tables
 
   let load path =
@@ -100,6 +126,38 @@ module Database = struct
   let find_table ?(ci = false) name { tables } =
     let op = if ci then Base.String.Caseless.( = ) else ( = ) in
     List.find_opt (fun { tname } -> op name tname) tables
+  ;;
+
+  let get_table name { tables } = List.find_opt (fun { tname } -> tname = name) tables
+  let get_col_table col { tables } = List.find (Table.column_exists col) tables
+
+  let get_table_ci name { tables } =
+    let tables =
+      let open Base.String.Caseless in
+      List.filter (fun { tname } -> tname = name) tables
+    in
+    get_ci tables
+  ;;
+
+  let get_col_ci name { tables } =
+    let search_table table =
+      try Some (Table.get_col_ci name table) with
+      | Not_found -> None
+    in
+    let search_result =
+      List.fold_left
+        (fun acc table ->
+          match acc, search_table table with
+          | None, None -> None
+          | Some _, Some _ -> raise AmbiguousEntity
+          | None, found -> found
+          | found, None -> found)
+        None
+        tables
+    in
+    match search_result with
+    | None -> raise Not_found
+    | Some col -> col
   ;;
 end
 
@@ -199,7 +257,6 @@ module Catalog = struct
 
   let drop ({ cpath } as c) = if catalog_exists c then rm_non_empty_dir cpath
   let get_db name { dbs } = List.find_opt (fun { dname } -> dname = name) dbs
-  let get_table_ci name { dbs } = List.filter_map (Database.find_table ~ci:true name) dbs
 
   let get_table_path ({ tname } as t) c =
     let db_path = get_path_to_db (find_table_db t c) c in
@@ -207,8 +264,6 @@ module Catalog = struct
   ;;
 
   let get_dbs { dbs } = dbs
-  let get_tables { tables } = tables
-  let get_table { tables } name = List.find_opt (fun { tname } -> tname = name) tables
-  let get_table_types table = List.map (fun { ctype } -> ctype) (Table.get_header table)
+  let get_table_types table = List.map (fun { ctype } -> ctype) (Table.header table)
   let get_db name c = List.find_opt (fun db -> Database.get_name db = name) (get_dbs c)
 end

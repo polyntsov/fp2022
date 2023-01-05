@@ -4,38 +4,6 @@
 
 open Meta
 
-(*(* Column in the tuple is represented by its index, type parameter encodes the
-   column type: int <-> IntCol ; string <-> StringCol
-  *)
-type _ column = int
-
-type 'a expression =
-  | Column : 'a column -> 'a expression
-  | ConstInt : int -> int expression
-  | ConstString : string -> string expression
-  | Plus : int * int -> int expression
-  | ColumnPlus : int column * int -> int expression
-  | PlusColumn : int * int column -> int expression
-  | ColumnPlusColumn : int column * int column -> int expression
-  | Minus : int * int -> int expression
-  | ColumnMinus : int column * int -> int expression
-  | MinusColumn : int * int column -> int expression
-  | ColumnMinusColumn : int column * int column -> int expression
-  | Mult : int * int -> int expression
-  | ColumnMult : int column * int -> int expression
-  | MultColumn : int * int column -> int expression
-  | ColumnMultColumn : int column * int column -> int expression
-  | Div : int * int -> int expression
-  | ColumnDiv : int column * int -> int expression
-  | DivColumn : int * int column -> int expression
-  | ColumnDivColumn : int column * int column -> int expression
-  | Equal : 'a * 'a -> bool expression
-  | NotEqual : 'a * 'a -> bool expression
-  | Less : 'a * 'a -> bool expression
-  | Greater : 'a * 'a -> bool expression
-  | LessOrEq : 'a * 'a -> bool expression
-  | GreaterOrEq : 'a * 'a -> bool expression*)
-
 module Tuple = struct
   type element =
     | Int of int
@@ -67,12 +35,6 @@ module Tuple = struct
 end
 
 type t = Tuple.t list
-
-(* Header of the relation is represented as a list of column names of
-   the kind `tablename.columname`. This approach will not work for the aggregation or
-   subqueries but since we don't support either such a representation should be enough.
-   *)
-type header = Ast.name list
 
 let csv_to_string_rel = List.map Csv.Row.to_list
 
@@ -107,7 +69,7 @@ module AccessManager = struct
 
   let load_db db c =
     { active_db = db
-    ; data = List.map (fun table -> table, load table c) (Catalog.get_tables db)
+    ; data = List.map (fun table -> table, load table c) (Database.get_tables db)
     }
   ;;
 

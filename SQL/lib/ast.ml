@@ -34,8 +34,6 @@ OR:
 
 *)
 
-let printer_ignore show fmt expr = Format.fprintf fmt "%s" (show expr)
-
 type name = string [@@deriving show { with_path = false }]
 
 type arithm_expression =
@@ -48,7 +46,7 @@ type arithm_expression =
 [@@deriving show { with_path = false }, variants]
 
 type atom_expression =
-  | Arithm of arithm_expression [@printer printer_ignore show_arithm_expression]
+  | Arithm of arithm_expression [@printer Utils.printer_ignore show_arithm_expression]
   (* To forbid ill-formed arithmetic expressions with strings on the parser level *)
   | String of string (** Any single quoted string *)
 [@@deriving show { with_path = false }, variants]
@@ -71,8 +69,8 @@ type predicate =
 [@@deriving show { with_path = false }, variants]
 
 type expression =
-  | AtomExpr of atom_expression [@printer printer_ignore show_atom_expression]
-  | PredExpr of predicate [@printer printer_ignore show_predicate]
+  | AtomExpr of atom_expression [@printer Utils.printer_ignore show_atom_expression]
+  | PredExpr of predicate [@printer Utils.printer_ignore show_predicate]
 [@@deriving show { with_path = false }, variants]
 
 type projection_item =

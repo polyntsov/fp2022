@@ -17,6 +17,8 @@ val column_type_of_string : string -> column_type
 (** Table attribute, constitutes column's name and type *)
 type column
 
+val column_type : column -> column_type
+
 (** Header of the table, i.e. list of attributes *)
 type header
 
@@ -45,8 +47,44 @@ type catalog
   the tables
 *)
 
+exception AmbiguousEntity
+
+module Table : sig
+  val name : table -> string
+  val col_fullname : column -> table -> string
+  val cols_as_fullnames : table -> string list
+
+  (** [get_table name t] returns column in table [t] with name equal to [name]
+      ignoring case
+      @raise Not_found if there is no column named [name] in [t]
+      @raise AmbigousEntity if there is more than one column named [name] in [t] *)
+  val get_col_ci : string -> table -> column
+end
+
 module Database : sig
   val get_name : database -> string
+
+  (** [get_tables db c] returns all tables in database [db] *)
+  val get_tables : database -> table list
+
+  (** [get_table name db] returns table with name equal
+      to [name] ignoring case
+      @raise Not_found if there is no table named [name] in [db]
+      @raise AmbigousEntity if there is more than one table named [name] in [db] *)
+  val get_table_ci : string -> database -> table
+
+  (** [get_table name db] returns table named [name] as [Some table] or
+      [None] if there is no such table in database [db] *)
+  val get_table : string -> database -> table option
+
+  val get_col_table : column -> database -> table
+
+  (** [get_col_ci name db] searches for column named [name] among all tables
+      of database [db] ignoring case and returns it
+      @raise Not_found if there is not column named [name] among all tables of [db]
+      @raise AmbigousEntity if there is more than one column named [name]
+      *)
+  val get_col_ci : string -> database -> column
 end
 
 module Catalog : sig
@@ -90,22 +128,11 @@ module Catalog : sig
       [None] if none exists *)
   val get_db : string -> catalog -> database option
 
-  (** [get_table name c] returns list of tables with name equal
-      to [name] ignoring case *)
-  val get_table_ci : string -> catalog -> table list
-
   (** [get_table_path table] returns path to the table *)
   val get_table_path : table -> catalog -> string
 
   (** [get_dbs c] returns all databases in [c] *)
   val get_dbs : catalog -> database list
-
-  (** [get_tables db c] returns all tables in database [db] *)
-  val get_tables : database -> table list
-
-  (** [get_table db name] returns table named [name] as [Some table] or
-      [None] if there is no such table in database [db] *)
-  val get_table : database -> string -> table option
 
   (** [get_table_types t] returns a list of table [t] column types *)
   val get_table_types : table -> column_type list
