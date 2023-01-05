@@ -26,6 +26,8 @@ type 'a expression =
   | Greater : 'a expression * 'a expression -> bool expression
   | LessOrEq : 'a expression * 'a expression -> bool expression
   | GreaterOrEq : 'a expression * 'a expression -> bool expression
+  | Or : bool expression * bool expression -> bool expression
+  | And : bool expression * bool expression -> bool expression
 
 let rec show_expression : type a. a expression -> _ =
   let bin cons_s l r =
@@ -46,6 +48,8 @@ let rec show_expression : type a. a expression -> _ =
   | Greater (l, r) -> bin "Greater" l r
   | LessOrEq (l, r) -> bin "LessOrEq" l r
   | GreaterOrEq (l, r) -> bin "GreaterOrEq" l r
+  | Or (l, r) -> bin "Or" l r
+  | And (l, r) -> bin "And" l r
 ;;
 
 type expression_type =
@@ -65,6 +69,11 @@ let less l r = Less (l, r)
 let greater l r = Greater (l, r)
 let less_or_eq l r = LessOrEq (l, r)
 let greater_or_eq l r = GreaterOrEq (l, r)
+let or_pred l r = Or (l, r)
+let and_pred l r = And (l, r)
+
+type pred_cons_helper =
+  { pred_cons : 'a. 'a expression -> 'a expression -> bool expression }
 
 type 'a projection =
   | Star
@@ -127,19 +136,21 @@ end = struct
     | AmbiguousEntity -> fail (AmbiguousTable tname)
   ;;
 
+  let types_mismatch l r =
+    TypesMismatch (Format.sprintf "'%s' and '%s' have incompatible types" l r)
+  ;;
+
+  let expr_types_mismatch l r =
+    types_mismatch (show_expression_type l) (show_expression_type r)
+  ;;
+
   let rec transform_arithm_expression hdr =
     let bin op l r =
       let* lexpr = transform_arithm_expression hdr l in
       let* rexpr = transform_arithm_expression hdr r in
       match lexpr, rexpr with
       | Int lexpr, Int rexpr -> return (Int (op lexpr rexpr))
-      | _ ->
-        fail
-          (TypesMismatch
-             (Format.sprintf
-                "'%s' and '%s' have incompatible types"
-                (show_expression_type lexpr)
-                (show_expression_type rexpr)))
+      | _ -> fail (expr_types_mismatch lexpr rexpr)
     in
     function
     | Ast.Column fullname ->
@@ -164,7 +175,6 @@ end = struct
         | _ -> fail (UnknownColumn fullname)
       in
       (match column_type col with
-       (* FIXME: Retrieve index from hdr *)
        | Meta.IntCol -> return (Int (IntCol (header_findi_by_col col hdr)))
        | Meta.StringCol -> return (String (StringCol (header_findi_by_col col hdr))))
     | Ast.Int num -> return (Int (ConstInt num))
@@ -172,6 +182,47 @@ end = struct
     | Ast.Minus (l, r) -> bin minus l r
     | Ast.Mult (l, r) -> bin mult l r
     | Ast.Div (l, r) -> bin div l r
+  ;;
+
+  let rec transform_predicate hdr =
+    let simple_pred { pred_cons } l r =
+      match l, r with
+      | Ast.String l, Ast.String r -> return (pred_cons (ConstString l) (ConstString r))
+      | Ast.Arithm l, Ast.Arithm r ->
+        let* l_arithm_expr = transform_arithm_expression hdr l in
+        let* r_arithm_expr = transform_arithm_expression hdr r in
+        (match l_arithm_expr, r_arithm_expr with
+         | String l_expr, String r_expr -> return (pred_cons l_expr r_expr)
+         | Int l_expr, Int r_expr -> return (pred_cons l_expr r_expr)
+         | l, r -> fail (expr_types_mismatch l r))
+      | l, r ->
+        fail (types_mismatch (Ast.show_atom_expression l) (Ast.show_atom_expression r))
+    in
+    let pred_pred { pred_cons } l r =
+      let* l_pred = transform_predicate hdr l in
+      let* r_pred = transform_predicate hdr r in
+      return (pred_cons l_pred r_pred)
+    in
+    let complex_pred cons l r =
+      let* l_pred = transform_predicate hdr l in
+      let* r_pred = transform_predicate hdr r in
+      return (cons l_pred r_pred)
+    in
+    function
+    | Ast.Equal (l, r) -> simple_pred { pred_cons = eq } l r
+    | Ast.NotEqual (l, r) -> simple_pred { pred_cons = not_eq } l r
+    | Ast.Less (l, r) -> simple_pred { pred_cons = less } l r
+    | Ast.Greater (l, r) -> simple_pred { pred_cons = greater } l r
+    | Ast.LessOrEq (l, r) -> simple_pred { pred_cons = less_or_eq } l r
+    | Ast.GreaterOrEq (l, r) -> simple_pred { pred_cons = greater_or_eq } l r
+    | Ast.PredEqual (l, r) -> pred_pred { pred_cons = eq } l r
+    | Ast.PredNotEqual (l, r) -> pred_pred { pred_cons = not_eq } l r
+    | Ast.PredLess (l, r) -> pred_pred { pred_cons = less } l r
+    | Ast.PredGreater (l, r) -> pred_pred { pred_cons = greater } l r
+    | Ast.PredLessOrEq (l, r) -> pred_pred { pred_cons = less_or_eq } l r
+    | Ast.PredGreaterOrEq (l, r) -> pred_pred { pred_cons = greater_or_eq } l r
+    | Ast.OrPred (l, r) -> complex_pred or_pred l r
+    | Ast.AndPred (l, r) -> complex_pred and_pred l r
   ;;
 
   let join_headers { header = lhdr } { header = rhdr } = lhdr @ rhdr
@@ -204,8 +255,8 @@ end = struct
   ;;
 
   let generate = function
-    | Ast.Insert -> assert false
     (* Insert queries are not supported yet and won't pass the parsing *)
+    | Ast.Insert -> assert false
     | Ast.Select { projection; from; where; orderby } ->
       let* from_tables = get_from_tables from in
       let* datasources = return (List.map from_tables ~f:cons_datasource) in
