@@ -95,6 +95,7 @@ module Table = struct
   ;;
 
   let column_exists col { header } = List.mem col header
+  let get_table_by_name name tables = List.find (fun { tname } -> name = tname) tables
 end
 
 module Database = struct
@@ -140,7 +141,7 @@ module Database = struct
     get_ci tables
   ;;
 
-  let get_col_ci name { tables } =
+  let get_col_ci name tables =
     let search_table table =
       try Some (Table.get_col_ci name table) with
       | Not_found -> None
@@ -151,7 +152,7 @@ module Database = struct
           match acc, search_table table with
           | None, None -> None
           | Some _, Some _ -> raise AmbiguousEntity
-          | None, found -> found
+          | None, Some col -> Some (table, col)
           | found, None -> found)
         None
         tables

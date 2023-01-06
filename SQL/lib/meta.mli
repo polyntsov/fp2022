@@ -59,6 +59,8 @@ module Table : sig
       @raise Not_found if there is no column named [name] in [t]
       @raise AmbigousEntity if there is more than one column named [name] in [t] *)
   val get_col_ci : string -> table -> column
+
+  val get_table_by_name : string -> table list -> table
 end
 
 module Database : sig
@@ -79,12 +81,12 @@ module Database : sig
 
   val get_col_table : column -> database -> table
 
-  (** [get_col_ci name db] searches for column named [name] among all tables
-      of database [db] ignoring case and returns it
-      @raise Not_found if there is not column named [name] among all tables of [db]
+  (** [get_col_ci name tables] searches for column named [name] among all tables
+      in [tables] ignoring case and returns it
+      @raise Not_found if there is not column named [name] among all tables in [tables]
       @raise AmbigousEntity if there is more than one column named [name]
       *)
-  val get_col_ci : string -> database -> column
+  val get_col_ci : string -> table list -> table * column
 
   val get_col_by_fullname_ci : string -> database -> column
 end

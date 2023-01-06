@@ -53,10 +53,16 @@ let rec show_expression : type a. a expression -> _ =
 ;;
 
 type expression_type =
-  | Bool of bool expression [@printer printer_ignore show_expression]
-  | Int of int expression [@printer printer_ignore show_expression]
-  | String of string expression [@printer printer_ignore show_expression]
-[@@deriving show { with_path = false }]
+  [ `Int of int expression
+  | `String of string expression
+  | `Bool of bool expression
+  ]
+
+let show_expression_type = function
+  | `Int (i : int expression) -> show_expression i
+  | `String (s : string expression) -> show_expression s
+  | `Bool (b : bool expression) -> show_expression b
+;;
 
 (* Since GADTs are not supported by variants lib *)
 let plus l r = Plus (l, r)
@@ -79,9 +85,11 @@ type 'a projection =
   | Star
   | ProjExpr of 'a expression
 
-(* Header of the relation is represented as a list of column names of
+(* Header of the relation (and of the operator) is represented as a list of column names of
    the kind `tablename.columname`. This approach will not work for the aggregation or
    subqueries but since we don't support either such a representation should be enough.
+   Also it's not the most efficient one (because of the linear search on column name, but I
+   don't think it's an important issue now)
    *)
 type header = Ast.name list
 
@@ -99,7 +107,7 @@ let header_findi value hdr =
 type operator =
   | Projection of
       { child : node
-      ; projection : Ast.projection_item list
+      ; projection : expression_type list
       }
   | Join of
       { left : node
@@ -118,6 +126,26 @@ and node =
   ; header : header
   }
 
+let rec show_plan { op; header } =
+  match op with
+  | Projection { child; projection } ->
+    let pp_items =
+      List.map2_exn
+        ~f:(fun item cname -> Format.sprintf "%s (%s)" cname (show_expression_type item))
+        projection
+        header
+    in
+    Format.sprintf
+      "Projection: %s\n%s"
+      (String.concat ~sep:", " pp_items)
+      (show_plan child)
+  | Datasource { table } -> Format.sprintf "Datasource (%s)" (Table.name table)
+  | Filter { child } -> failwith "filter not implemented"
+  | Join { left; right; join_constraint } ->
+    Format.sprintf "CROSS JOIN\n%s\nAND\n%s\n" (show_plan left) (show_plan right)
+  | OrderBy { child; order_expr } -> failwith "orderby not implemented"
+;;
+
 let ( let* ) = Result.( >>= )
 
 module QueryGenerator (M : MonadFail) (E : Environment) : sig
@@ -125,9 +153,14 @@ module QueryGenerator (M : MonadFail) (E : Environment) : sig
 end = struct
   open M
 
-  let header_findi_by_col col hdr =
-    let table = Database.get_col_table col E.db in
-    header_findi (Table.col_fullname col table) hdr
+  type table_col =
+    { table : Meta.table
+    ; col : Meta.column
+    }
+
+  let header_findi_by_col { table; col } hdr =
+    let cname = Table.col_fullname col table in
+    header_findi cname hdr
   ;;
 
   let resolve_table tname =
@@ -144,26 +177,34 @@ end = struct
     types_mismatch (show_expression_type l) (show_expression_type r)
   ;;
 
-  let rec transform_arithm_expression hdr =
+  let col_to_expression_type col i =
+    match column_type col with
+    | Meta.IntCol -> `Int (IntCol i)
+    | Meta.StringCol -> `String (StringCol i)
+  ;;
+
+  let rec transform_arithm_expression hdr tables =
     let bin op l r =
-      let* lexpr = transform_arithm_expression hdr l in
-      let* rexpr = transform_arithm_expression hdr r in
+      let* lexpr = transform_arithm_expression hdr tables l in
+      let* rexpr = transform_arithm_expression hdr tables r in
       match lexpr, rexpr with
-      | Int lexpr, Int rexpr -> return (Int (op lexpr rexpr))
+      | `Int lexpr, `Int rexpr -> return (`Int (op lexpr rexpr))
       | _ -> fail (expr_types_mismatch lexpr rexpr)
     in
     function
     | Ast.Column fullname ->
-      let* col =
-        let resolve_col_with f cname entity =
+      let* table, col =
+        let resolve_with f cname entity =
           try return (f cname entity) with
           | Not_found -> fail (UnknownColumn fullname)
           | AmbiguousEntity -> fail (AmbiguousColumn fullname)
         in
-        let resolve_col cname = resolve_col_with Database.get_col_ci cname E.db in
         let resolve_col_with_table tname cname =
-          let* table = resolve_table tname in
-          resolve_col_with Table.get_col_ci cname table
+          let* table = resolve_with Table.get_table_by_name tname tables in
+          resolve_with
+            (fun cname table -> table, Table.get_col_ci cname table)
+            cname
+            table
         in
         match Caml.String.split_on_char '.' fullname with
         | [ dbname; tname; cname ] ->
@@ -171,41 +212,40 @@ end = struct
           then fail (WrongDatabase dbname)
           else resolve_col_with_table tname cname
         | [ tname; cname ] -> resolve_col_with_table tname cname
-        | [ cname ] -> resolve_col cname
-        | _ -> fail (UnknownColumn fullname)
+        | [ cname ] -> resolve_with Database.get_col_ci cname tables
+        (* actually impossible case, because such names should not pass parsing *)
+        | _ -> assert false
       in
-      (match column_type col with
-       | Meta.IntCol -> return (Int (IntCol (header_findi_by_col col hdr)))
-       | Meta.StringCol -> return (String (StringCol (header_findi_by_col col hdr))))
-    | Ast.Int num -> return (Int (ConstInt num))
+      return (col_to_expression_type col (header_findi_by_col { table; col } hdr))
+    | Ast.Int num -> return (`Int (ConstInt num))
     | Ast.Plus (l, r) -> bin plus l r
     | Ast.Minus (l, r) -> bin minus l r
     | Ast.Mult (l, r) -> bin mult l r
     | Ast.Div (l, r) -> bin div l r
   ;;
 
-  let rec transform_predicate hdr =
+  let transform_atom_expression hdr tables = function
+    | Ast.String e -> return (`String (ConstString e))
+    | Ast.Arithm e -> transform_arithm_expression hdr tables e
+  ;;
+
+  let rec transform_predicate hdr tables =
     let simple_pred { pred_cons } l r =
-      match l, r with
-      | Ast.String l, Ast.String r -> return (pred_cons (ConstString l) (ConstString r))
-      | Ast.Arithm l, Ast.Arithm r ->
-        let* l_arithm_expr = transform_arithm_expression hdr l in
-        let* r_arithm_expr = transform_arithm_expression hdr r in
-        (match l_arithm_expr, r_arithm_expr with
-         | String l_expr, String r_expr -> return (pred_cons l_expr r_expr)
-         | Int l_expr, Int r_expr -> return (pred_cons l_expr r_expr)
-         | l, r -> fail (expr_types_mismatch l r))
-      | l, r ->
-        fail (types_mismatch (Ast.show_atom_expression l) (Ast.show_atom_expression r))
+      let* l_atom_expr = transform_atom_expression hdr tables l in
+      let* r_atom_expr = transform_atom_expression hdr tables r in
+      match l_atom_expr, r_atom_expr with
+      | `Int l, `Int r -> return (pred_cons l r)
+      | `String l, `String r -> return (pred_cons l r)
+      | l, r -> fail (expr_types_mismatch l r)
     in
     let pred_pred { pred_cons } l r =
-      let* l_pred = transform_predicate hdr l in
-      let* r_pred = transform_predicate hdr r in
+      let* l_pred = transform_predicate hdr tables l in
+      let* r_pred = transform_predicate hdr tables r in
       return (pred_cons l_pred r_pred)
     in
     let complex_pred cons l r =
-      let* l_pred = transform_predicate hdr l in
-      let* r_pred = transform_predicate hdr r in
+      let* l_pred = transform_predicate hdr tables l in
+      let* r_pred = transform_predicate hdr tables r in
       return (cons l_pred r_pred)
     in
     function
@@ -225,6 +265,45 @@ end = struct
     | Ast.AndPred (l, r) -> complex_pred and_pred l r
   ;;
 
+  let transform_projection_item hdr tables = function
+    | Ast.Star ->
+      return
+        (List.mapi
+           ~f:(fun i fullname ->
+             let col = Database.get_col_by_fullname_ci fullname E.db in
+             col_to_expression_type col i)
+           hdr)
+    | ProjAtomItem (expr, _alias) ->
+      (match expr with
+       | AtomExpr atom_expr ->
+         let* expr = transform_atom_expression hdr tables atom_expr in
+         return [ expr ]
+       | PredExpr pred_expr ->
+         let* expr = transform_predicate hdr tables pred_expr in
+         return [ `Bool expr ])
+  ;;
+
+  let calc_projection_header hdr =
+    (* This is the name postgres uses for expressions without alias *)
+    let dummy_name = "?column?" in
+    let get_cname = function
+      | Ast.PredExpr _ -> dummy_name
+      | Ast.AtomExpr expr ->
+        (match expr with
+         | Ast.String _ -> dummy_name
+         | Ast.Arithm expr ->
+           (match expr with
+            | Column name -> name
+            | _ -> dummy_name))
+    in
+    function
+    | Ast.Star -> hdr
+    | ProjAtomItem (expr, alias) ->
+      (match alias with
+       | Some name -> [ name ]
+       | None -> [ get_cname expr ])
+  ;;
+
   let join_headers { header = lhdr } { header = rhdr } = lhdr @ rhdr
   let get_node_header { header } = header
 
@@ -236,6 +315,18 @@ end = struct
     { op = Join { left; right; join_constraint = Cross }
     ; header = join_headers left right
     }
+  ;;
+
+  let cons_projection ({ header = child_hdr } as child) proj_items tables =
+    (* not very efficient, but concise *)
+    let* projections =
+      M.all (List.map ~f:(transform_projection_item child_hdr tables) proj_items)
+    in
+    let projection = List.concat projections in
+    return
+      { op = Projection { child; projection }
+      ; header = List.concat (List.map ~f:(calc_projection_header child_hdr) proj_items)
+      }
   ;;
 
   let get_from_tables from =
@@ -259,17 +350,21 @@ end = struct
     | Ast.Insert -> assert false
     | Ast.Select { projection; from; where; orderby } ->
       let* from_tables = get_from_tables from in
-      let* datasources = return (List.map from_tables ~f:cons_datasource) in
+      let datasources = List.map from_tables ~f:cons_datasource in
       let datasources_hd = List.hd_exn datasources in
       let datasources_tl = List.tl datasources in
-      (match datasources_tl with
-       | None -> return datasources_hd
-       | Some tl -> return (List.fold tl ~f:cons_cross_join ~init:datasources_hd))
+      let tree =
+        match datasources_tl with
+        | None -> datasources_hd
+        | Some tl -> List.fold tl ~f:cons_cross_join ~init:datasources_hd
+      in
+      cons_projection tree projection from_tables
   ;;
 end
 
 module Interpret (M : MonadFail) (E : Environment) : sig
   val run : Ast.statement -> (Relation.t, Utils.error) M.t
+  val explain : Ast.statement -> (string, Utils.error) M.t
 end = struct
   open M
 
@@ -282,6 +377,14 @@ end = struct
     in
     eval plan
   ;;
+
+  let explain ast =
+    let* plan =
+      let module Generator = QueryGenerator (M) (E) in
+      Generator.generate ast
+    in
+    return (show_plan plan)
+  ;;
 end
 
 let interpret query (module E : Environment) =
@@ -289,6 +392,16 @@ let interpret query (module E : Environment) =
     let module I = Interpret (Result) (E) in
     match Parser.parse query with
     | Caml.Result.Ok ast -> I.run ast
+    | Caml.Result.Error error -> Result.fail (ParsingError error)
+  in
+  ans
+;;
+
+let explain query (module E : Environment) =
+  let ans =
+    let module I = Interpret (Result) (E) in
+    match Parser.parse query with
+    | Caml.Result.Ok ast -> I.explain ast
     | Caml.Result.Error error -> Result.fail (ParsingError error)
   in
   ans
