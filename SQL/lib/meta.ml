@@ -36,6 +36,7 @@ type catalog =
 [@@deriving yojson]
 
 exception AmbiguousEntity
+exception EntityAlreadyExists
 
 let column_type_to_string = function
   | IntCol -> "IntCol"
@@ -159,6 +160,12 @@ module Database = struct
     | None -> raise Not_found
     | Some col -> col
   ;;
+
+  let get_col_by_fullname_ci name db =
+    match Caml.String.split_on_char '.' name with
+    | [ tname; cname ] -> Table.get_col_ci cname (get_table_ci tname db)
+    | _ -> raise (Invalid_argument name)
+  ;;
 end
 
 let rec rm_non_empty_dir path =
@@ -177,9 +184,16 @@ module Catalog = struct
     { c with dbs = List.filter (( != ) db) old_dbs }
   ;;
 
+  let get_dbs { dbs } = dbs
+  let get_db name c = List.find_opt (fun db -> Database.get_name db = name) (get_dbs c)
+
   let create_db name c =
-    let db = { dname = name; tables = [] } in
-    db, add_db db c
+    match get_db name c with
+    | Some _ -> raise EntityAlreadyExists
+    | None ->
+      ();
+      let db = { dname = name; tables = [] } in
+      db, add_db db c
   ;;
 
   let find_table_db table { dbs } = List.find (Database.table_exists table) dbs
@@ -188,22 +202,18 @@ module Catalog = struct
   let update_table old_table new_table c =
     let old_db = find_table_db old_table c in
     let new_db = Database.update_table old_table new_table old_db in
-    update_db old_db new_db c
+    new_db, update_db old_db new_db c
   ;;
 
   let create_table tname old_db c =
     let t, new_db = Database.create_table tname old_db in
-    t, update_db old_db new_db c
-  ;;
-
-  let create_col cname coltype old_table c =
-    let col, new_table = Table.create_col cname coltype old_table in
-    col, update_table old_table new_table c
+    t, new_db, update_db old_db new_db c
   ;;
 
   let create_cols args old_table c =
     let new_table = Table.create_cols args old_table in
-    new_table, update_table old_table new_table c
+    let new_db, new_c = update_table old_table new_table c in
+    new_table, new_db, new_c
   ;;
 
   let catalog_dir = "_catalog"
@@ -249,9 +259,13 @@ module Catalog = struct
     create path
   ;;
 
-  let dump ({ dbs; cpath } as catalog) =
+  let dump_meta ({ cpath } as catalog) =
     if not (catalog_exists catalog) then Sys.mkdir cpath file_perm;
-    Yojson.Safe.to_file (meta cpath) (yojson_of_catalog catalog);
+    Yojson.Safe.to_file (meta cpath) (yojson_of_catalog catalog)
+  ;;
+
+  let dump ({ dbs; cpath } as catalog) =
+    dump_meta catalog;
     List.iter (Database.dump cpath) dbs
   ;;
 
@@ -263,7 +277,5 @@ module Catalog = struct
     Filename.concat db_path tname
   ;;
 
-  let get_dbs { dbs } = dbs
   let get_table_types table = List.map (fun { ctype } -> ctype) (Table.header table)
-  let get_db name c = List.find_opt (fun db -> Database.get_name db = name) (get_dbs c)
 end

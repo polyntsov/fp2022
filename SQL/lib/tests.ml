@@ -11,8 +11,8 @@ let db_name = "testdb"
 let t_name = "t1"
 let c = Catalog.recreate pwd
 let db, c = Catalog.create_db db_name c
-let t1, c = Catalog.create_table t_name db c
-let t1, c = Catalog.create_cols [ "A", IntCol; "B", StringCol ] t1 c
+let t1, db, c = Catalog.create_table t_name db c
+let t1, db, c = Catalog.create_cols [ "A", IntCol; "B", StringCol ] t1 c
 
 let t1_rel = {|1,abcd
 2,cde
@@ -27,6 +27,7 @@ let () = Catalog.dump c
 let () = Core.Out_channel.write_all (Catalog.get_table_path t1 c) ~data:t1_rel
 
 let%test _ = c = Catalog.load pwd
+let%test _ = [ t1 ] = Database.get_tables db
 
 let db =
   let opt_db = Catalog.get_db db_name c in

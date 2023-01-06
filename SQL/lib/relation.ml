@@ -92,7 +92,7 @@ module AccessManager = struct
 
   let create_table coltypes colnames name db c =
     let types = List.map Meta.column_type_of_string coltypes in
-    let table, c = Catalog.create_table name db c in
+    let table, _db, c = Catalog.create_table name db c in
     Catalog.create_cols (List.combine colnames types) table c
   ;;
 
@@ -109,7 +109,7 @@ module AccessManager = struct
       raise
         (Failure
            (Format.sprintf "%s and %s have different number of columns" hdr_file rel_file));
-    let t, c =
+    let t, db, c =
       create_table
         types
         names
@@ -120,14 +120,14 @@ module AccessManager = struct
     if not (Csv.is_square rel_csv)
     then raise (Failure (rel_file ^ " has empty cells"))
     else dump_csv t rel_csv c;
-    c
+    db, c
   ;;
 
   let make_db_from path c =
     if not (Sys.is_directory path) then raise (Failure ("No directory " ^ path));
     let db, c = Catalog.create_db (Filename.basename path) c in
     Catalog.dump c;
-    let load_if_csv name c =
+    let load_if_csv name (db, c) =
       if Filename.extension name = ".csv"
       then (
         let hdr_file = Filename.remove_extension name ^ ".hdr" in
@@ -136,12 +136,18 @@ module AccessManager = struct
           Format.eprintf
             "Encountered .csv file %s without corresponding .hdr file, skipping it\n"
             name;
-          c)
+          db, c)
         else update_db hdr_file name db c)
-      else c
+      else db, c
     in
-    Sys.readdir path
-    |> Array.fold_left (fun c name -> load_if_csv (Filename.concat path name) c) c
+    let _db, new_c =
+      Sys.readdir path
+      |> Array.fold_left
+           (fun db_and_c name -> load_if_csv (Filename.concat path name) db_and_c)
+           (db, c)
+    in
+    Catalog.dump_meta new_c;
+    new_c
   ;;
 
   (* Code managing changes in existing tables should be placed here *)

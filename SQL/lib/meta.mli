@@ -85,6 +85,8 @@ module Database : sig
       @raise AmbigousEntity if there is more than one column named [name]
       *)
   val get_col_ci : string -> database -> column
+
+  val get_col_by_fullname_ci : string -> database -> column
 end
 
 module Catalog : sig
@@ -103,8 +105,12 @@ module Catalog : sig
       but if it already exists drops it and creates a new emtpy one *)
   val recreate : string -> catalog
 
-  (** [dump c] writes catalog [c] to the disk to catalog's path *)
+  (** [dump c] writes catalog [c] (its meta and creates internal structure
+      for data) to the disk to catalog's path *)
   val dump : catalog -> unit
+
+  (** [dump_meta c] writes meta of catalog [c] to the disk to catalog's path *)
+  val dump_meta : catalog -> unit
 
   (** [drop c] deletes catalog [c] from the disk *)
   val drop : catalog -> unit
@@ -115,11 +121,15 @@ module Catalog : sig
 
   (** [create_table name db] creates a new empty table named [name] in
       corresponding database [db] *)
-  val create_table : string -> database -> catalog -> table * catalog
+  val create_table : string -> database -> catalog -> table * database * catalog
 
   (** [create_cols cols_list table] creates columns from [cols_list] list
       of <name, type> pairs and inserts them into [table] *)
-  val create_cols : (string * column_type) list -> table -> catalog -> table * catalog
+  val create_cols
+    :  (string * column_type) list
+    -> table
+    -> catalog
+    -> table * database * catalog
 
   (** [to_string c] converts [c] to json string *)
   val to_string : catalog -> string
