@@ -29,7 +29,7 @@ let pp_node =
     in
     let pp_join_constraint fmt = function
       | Left pred | Right pred | Inner pred ->
-        Format.fprintf fmt "ON %s" (show_expression pred)
+        Format.fprintf fmt "@,ON %s" (show_expression pred)
       | Cross -> ()
     in
     match op with
