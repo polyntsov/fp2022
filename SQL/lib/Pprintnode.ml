@@ -42,7 +42,7 @@ let pp_node =
     | Join { left; right; join_constraint } ->
       Format.fprintf
         fmt
-        "@[<v 4>%a JOIN@,%a@]@,@[<v 4>AND@,%a@]@,%a"
+        "@[<v 4>%a JOIN@,%a@]@,@[<v 4>AND@,%a@]%a"
         pp_join_type
         join_constraint
         pp
