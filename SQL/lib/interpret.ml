@@ -352,23 +352,39 @@ end = struct
     helper
   ;;
 
+  let rec collect_tables_from_node { op } =
+    match op with
+    | Datasource { table } -> [ table ]
+    | Filter { child } -> collect_tables_from_node child
+    | Projection { child } -> collect_tables_from_node child
+    | OrderBy { child } -> collect_tables_from_node child
+    | Join { left; right } ->
+      collect_tables_from_node left @ collect_tables_from_node right
+  ;;
+
+  module PredTables = Caml.Set.Make (struct
+    type t = table
+
+    let compare = Caml.compare
+  end)
+
   let collect_tables_from_pred tables =
     let bin f l r =
       let* lt = f l in
       let* rt = f r in
-      return (lt @ rt)
+      return (PredTables.union lt rt)
     in
     let rec collect_tables_from_arithm_expr =
       let bin l r = bin collect_tables_from_arithm_expr l r in
       function
       | Ast.Column name ->
         let* table, _col = resolve_column name tables in
-        return [ table ]
-      | Ast.Int _ -> return []
+        return (PredTables.singleton table)
+      | Ast.Int _ -> return PredTables.empty
       | Ast.Plus (l, r) | Ast.Minus (l, r) | Ast.Mult (l, r) | Ast.Div (l, r) -> bin l r
     in
     let collect_tables_from_atom_expr = function
-      | Ast.String _ -> return []
+      | Ast.String _ -> return PredTables.empty
       | Ast.Arithm e -> collect_tables_from_arithm_expr e
     in
     let rec helper =
@@ -390,7 +406,9 @@ end = struct
       | Ast.LessOrEq (l, r) -> bin_atom l r
       | Ast.GreaterOrEq (l, r) -> bin_atom l r
     in
-    helper
+    fun pred ->
+      let* tables = helper pred in
+      return (Caml.List.of_seq (PredTables.to_seq tables))
   ;;
 
   let rec conjuncts_of_pred = function
@@ -453,14 +471,15 @@ end = struct
     let compare t1 t2 = String.compare (Table.name t1) (Table.name t2)
   end)
 
+  let merge_preds next_pred = function
+    | None -> Some next_pred
+    | Some pred -> Some (Ast.AndPred (pred, next_pred))
+  ;;
+
   (* Constructs map<table, tree> where tree is a filter -> datasource or just
      a datasource operator *)
   let pushdown_predicates tables datasources (tables_per_pred, conjuncts) =
     let tables_to_filter =
-      let merge_preds next_pred = function
-        | None -> Some next_pred
-        | Some pred -> Some (Ast.AndPred (pred, next_pred))
-      in
       Caml.List.fold_left2
         (fun m table next_pred -> TableMap.update table (merge_preds next_pred) m)
         TableMap.empty
@@ -506,6 +525,21 @@ end = struct
           | _ -> Second (tables, pred))
         non_const
     in
+    (* Some kinds of filter predicates with >2 tables can be transformed to inner join:
+       E.g., in the query
+          SELECT * FROM t1, t2 JOIN t3 ON t2.a=t3.a WHERE t1.a + t2.a = t3.a
+       the filtration can be transformed to:
+          SELECT * FROM t1 JOIN (t2 JOIN t3 ON t2.a=t3.a) ON t1.a + t2.a = t3.a
+       whereas in the query
+          SELECT * FROM t1, t2, t3 WHERE t1.a + t2.a = t3.a
+       the same filtration cannot be expressed using only inner joins in any way
+       (however it's possible to replace specifically this predicate with cross product
+       and inner join, but that's another story).
+       Its hard to distiguish between these cases, so for now transform filtration to
+       join only if it has exactly two tables. Also, queries very rarely have such
+       complex predicates, so for the vast majority of queries this algorithm will
+       still be the most efficient.
+    *)
     let join_preds, top_preds =
       List.partition_map
         ~f:(fun (tables, pred) ->
@@ -517,6 +551,13 @@ end = struct
     return (const, pushdownable, join_preds, top_preds)
   ;;
 
+  let cons_join left right type_cons pred tables =
+    let header = join_headers left right in
+    let* pred = transform_predicate header tables pred in
+    let join = Join { left; right; join_constraint = type_cons pred } in
+    return { op = join; header }
+  ;;
+
   let rec transform_ds ds_tables dses_m = function
     | Ast.Table _ -> return (TableMap.find (List.hd_exn ds_tables) dses_m)
     | Ast.Join { left; right; join_constraint } ->
@@ -524,11 +565,8 @@ end = struct
       let* right_tables = get_tables_from_ds right in
       let* left = transform_ds left_tables dses_m left in
       let* right = transform_ds right_tables dses_m right in
-      let header = join_headers left right in
       let cons_join type_cons pred =
-        let* pred = transform_predicate header (left_tables @ right_tables) pred in
-        let join = Join { left; right; join_constraint = type_cons pred } in
-        return { op = join; header }
+        cons_join left right type_cons pred (left_tables @ right_tables)
       in
       (match join_constraint with
        | Ast.Left pred -> cons_join left_join_cons pred
@@ -559,20 +597,114 @@ end = struct
   let gen_bottom_level tables datasources = function
     | Some where ->
       let conjuncts = conjuncts_of_pred where in
-      let* const_preds, pushdownable, join_preds, top_preds =
+      let* const_preds, pushdownable, join_preds, complex_preds =
         classify_conjuncts tables conjuncts
       in
       let* dses_m =
         pushdown_predicates tables datasources (Caml.List.split pushdownable)
       in
-      gen_const_preds dses_m const_preds
+      let* dses_m = gen_const_preds dses_m const_preds in
+      return (Some (join_preds, complex_preds), dses_m)
     | None ->
       return
-        (Caml.List.fold_left2
-           (fun m t ds -> TableMap.add t ds m)
-           TableMap.empty
-           tables
-           datasources)
+        ( None
+        , Caml.List.fold_left2
+            (fun m t ds -> TableMap.add t ds m)
+            TableMap.empty
+            tables
+            datasources )
+  ;;
+
+  (* Map <left, right> -> predicate means that items with indices `left` and `right`
+     in the from clause can be inner joined using predicate `predicate` *)
+  module JoinableIndicesMap = Caml.Map.Make (struct
+    type t = int * int
+
+    let compare = Caml.compare
+  end)
+
+  let find_joinable_dses preds_opt from_tables_per_ds =
+    let find_joinable_dses (ltable, rtable) =
+      let find_index t =
+        Core.List.findi_exn from_tables_per_ds ~f:(fun _ -> List.exists ~f:(Caml.( = ) t))
+      in
+      fst (find_index ltable), fst (find_index rtable)
+    in
+    match preds_opt with
+    | Some (join_preds, _complex_preds) ->
+      List.fold
+        join_preds
+        ~f:(fun ji_map (ltable, rtable, next_pred) ->
+          let li, ri = find_joinable_dses (ltable, rtable) in
+          JoinableIndicesMap.update (li, ri) (merge_preds next_pred) ji_map)
+        ~init:JoinableIndicesMap.empty
+    | None -> JoinableIndicesMap.empty
+  ;;
+
+  let really_join_dses joinable_m from =
+    let get_ds = List.nth_exn from in
+    let not_joined =
+      List.filteri from ~f:(fun i _ ->
+        not
+          (JoinableIndicesMap.fold
+             (fun (l, r) _ acc -> acc || i = l || i = r)
+             joinable_m
+             false))
+    in
+    let* joined =
+      JoinableIndicesMap.fold
+        (fun indices pred joined ->
+          let* joined = joined in
+          let* ds =
+            match indices with
+            | li, ri when li = ri ->
+              let child = get_ds li in
+              (* It's not the most efficient tree (probably, actually it heavily depends on the
+                 predicate and the join itself), we can try to generate the filter operator over
+                 join's either left or right subtree if one of them has all the required tables.
+                 I'll do it later if I have time. Note that the child here is guaranteed to be join
+                 because it contains atleast several tables (guaranteed by the generation algorithm).
+               *)
+              let* filter = cons_filter child (collect_tables_from_node child) pred in
+              return filter
+            | li, ri ->
+              let lds = get_ds li in
+              let rds = get_ds ri in
+              let tables = collect_tables_from_node lds @ collect_tables_from_node rds in
+              let* join = cons_join lds rds inner_join_cons pred tables in
+              return join
+          in
+          return (ds :: joined))
+        joinable_m
+        (return [])
+    in
+    return (not_joined @ joined)
+  ;;
+
+  let join_dses joinable_m from =
+    let contains_same_table (ts1, _) (ts2, _) =
+      let l1, r1 = ts1 in
+      let l2, r2 = ts2 in
+      let ( = ) = Caml.( = ) in
+      if l1 = l2 || r1 = r2 || l1 = r2 || l2 = r1 then 0 else -1
+    in
+    (* If any table occurs more than once in joins predicates, don't join anything.
+       Super inefficent for some types of queries but at least correct (I have no time to do
+       it right)
+     *)
+    match
+      Core.List.find_a_dup
+        (JoinableIndicesMap.bindings joinable_m)
+        ~compare:contains_same_table
+    with
+    | Some _ ->
+      let unable_to_join =
+        JoinableIndicesMap.fold (fun _ -> merge_preds) joinable_m None
+      in
+      return (unable_to_join, from)
+    | None ->
+      let* joined = really_join_dses joinable_m from in
+      return (None, joined)
   ;;
 
   let generate = function
@@ -581,18 +713,38 @@ end = struct
     | Ast.Select { projection; from; where; orderby } ->
       let* from_tables_per_ds, all_tables = get_from_tables from in
       let datasources = List.map all_tables ~f:cons_datasource in
-      let* dses_m = gen_bottom_level all_tables datasources where in
+      let* preds_opt, dses_m = gen_bottom_level all_tables datasources where in
       let* from =
         M.all
           (List.map2_exn from_tables_per_ds from ~f:(fun ds_tables ast_ds ->
              transform_ds ds_tables dses_m ast_ds))
       in
-      let datasources_hd = List.hd_exn from in
-      let datasources_tl = List.tl from in
+      let joinable_m = find_joinable_dses preds_opt from_tables_per_ds in
+      let* unable_to_join_opt, final_dses = join_dses joinable_m from in
+      let datasources_hd = List.hd_exn final_dses in
+      let datasources_tl = List.tl final_dses in
       let tree =
         match datasources_tl with
         | None -> datasources_hd
         | Some tl -> List.fold tl ~f:cons_cross_join ~init:datasources_hd
+      in
+      let* tree =
+        let pred =
+          match preds_opt, unable_to_join_opt with
+          | Some (_, []), None -> None
+          | Some (_, []), Some pred -> Some pred
+          | None, Some pred -> Some pred
+          | Some (_, complex_preds), None ->
+            let _, preds = Caml.List.split complex_preds in
+            Some (pred_of_conjuncts preds)
+          | Some (_, complex_preds), Some pred ->
+            let _, preds = Caml.List.split complex_preds in
+            Some (Ast.AndPred (pred_of_conjuncts preds, pred))
+          | None, None -> None
+        in
+        match pred with
+        | None -> return tree
+        | Some pred -> cons_filter tree all_tables pred
       in
       cons_projection tree projection all_tables
   ;;
