@@ -1,16 +1,52 @@
 open Base
 open Sql_lib
 
-let run_repl _ =
-  Caml.Format.eprintf "OCaml-style toplevel (ocamlc, utop) is not implemented"
+let run_query query e =
+  (*match Interpret.interpret query e with
+  | Result.Error error -> Caml.Format.printf "%s\n%!" (Utils.show_error error)
+  | Result.Ok rel -> Csv.print_readable (Relation.to_csv rel)*)
+  match Interpret.explain query e with
+  | Result.Error error -> Caml.Format.printf "%s\n%!" (Utils.show_error error)
+  | Result.Ok tree -> Pprintnode.pp tree
 ;;
 
 let run_single e =
   let query = Stdio.In_channel.(input_all stdin) |> String.rstrip in
-  match Interpret.interpret query e with
+  (*match Interpret.interpret query e with
   | Result.Error error -> Caml.Format.printf "%s\n%!" (Utils.show_error error)
-  | Result.Ok rel -> Csv.print_readable (Relation.to_csv rel)
+  | Result.Ok rel -> Csv.print_readable (Relation.to_csv rel)*)
+  run_query query e
 ;;
+
+let run_repl e =
+  let get_char () =
+    let termio = Unix.tcgetattr Unix.stdin in
+    let () =
+      Unix.tcsetattr Unix.stdin Unix.TCSADRAIN { termio with Unix.c_icanon = false }
+    in
+    let res = input_char stdin in
+    Unix.tcsetattr Unix.stdin Unix.TCSADRAIN termio;
+    res
+  in
+  while true do
+    let rec helper query semicolon =
+      let add_to_query query c = query ^ String.make 1 c in
+      match get_char () with
+      | ';' -> helper query true
+      | c when Caml.( = ) c '\n' ->
+        if semicolon
+        then query
+        else (
+          Format.printf "\\ %!";
+          helper (add_to_query query c) semicolon)
+      | c -> helper (add_to_query query c) semicolon
+    in
+    Format.printf "> %!";
+    run_query (helper "" false) e
+  done
+;;
+
+(*Caml.Format.eprintf "OCaml-style toplevel (ocamlc, utop) is not implemented"*)
 
 type opts =
   { mutable batch : bool
@@ -75,7 +111,7 @@ let () =
       end
       in
       Format.printf "Connected to %s\n%!" (Meta.Database.get_name Env.db);
-      if opts.batch then run_single (module Env) else run_repl ()
+      if opts.batch then run_single (module Env) else run_repl (module Env)
     | Some path ->
       let _c = Relation.AccessManager.make_db_from path catalog in
       ()
