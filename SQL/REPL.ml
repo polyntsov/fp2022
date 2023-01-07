@@ -13,9 +13,6 @@ let run_query query e =
 
 let run_single e =
   let query = Stdio.In_channel.(input_all stdin) |> String.rstrip in
-  (*match Interpret.interpret query e with
-  | Result.Error error -> Caml.Format.printf "%s\n%!" (Utils.show_error error)
-  | Result.Ok rel -> Csv.print_readable (Relation.to_csv rel)*)
   run_query query e
 ;;
 
