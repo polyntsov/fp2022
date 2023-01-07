@@ -460,9 +460,12 @@ end = struct
     return { op; header }
   ;;
 
-  let add_pred_to_filter ({ op = Filter ({ filter } as filter_op) } as node) pred =
-    let new_filter = And (pred, filter) in
-    { node with op = Filter { filter_op with filter = new_filter } }
+  let add_pred_to_filter ({ op } as node) pred =
+    match op with
+    | Filter ({ filter } as filter_op) ->
+      let new_filter = And (pred, filter) in
+      { node with op = Filter { filter_op with filter = new_filter } }
+    | _ -> raise (Invalid_argument "For filter only")
   ;;
 
   module TableMap = Caml.Map.Make (struct
@@ -710,7 +713,7 @@ end = struct
   let generate = function
     (* Insert queries are not supported yet and won't pass the parsing *)
     | Ast.Insert -> assert false
-    | Ast.Select { projection; from; where; orderby } ->
+    | Ast.Select { projection; from; where } ->
       let* from_tables_per_ds, all_tables = get_from_tables from in
       let datasources = List.map all_tables ~f:cons_datasource in
       let* preds_opt, dses_m = gen_bottom_level all_tables datasources where in

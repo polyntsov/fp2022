@@ -6,7 +6,6 @@
 
 open Base
 open Meta
-open Utils
 open Interpret
 
 let pp_node =
@@ -82,7 +81,7 @@ let pp_node =
         right
         pp_join_constraint
         join_constraint
-    | OrderBy { child; order_expr } -> failwith "orderby not implemented"
+    | OrderBy _ -> raise Utils.NotImplemented
   in
   pp
 ;;
