@@ -164,7 +164,9 @@ module Database = struct
 
   let get_col_by_fullname_ci name db =
     match Caml.String.split_on_char '.' name with
-    | [ tname; cname ] -> Table.get_col_ci cname (get_table_ci tname db)
+    | [ tname; cname ] ->
+      let table = get_table_ci tname db in
+      table, Table.get_col_ci cname table
     | _ -> raise (Invalid_argument name)
   ;;
 end

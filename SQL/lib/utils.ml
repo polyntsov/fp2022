@@ -12,6 +12,7 @@ type ('a, 'b) type_error =
 
 type error =
   | UnknownTable of string
+  | SpecifiedMoreThanOnce of string
   | AmbiguousTable of string
   | UnknownColumn of string
   | AmbiguousColumn of string

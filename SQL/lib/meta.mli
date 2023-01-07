@@ -88,7 +88,7 @@ module Database : sig
       *)
   val get_col_ci : string -> table list -> table * column
 
-  val get_col_by_fullname_ci : string -> database -> column
+  val get_col_by_fullname_ci : string -> database -> table * column
 end
 
 module Catalog : sig
