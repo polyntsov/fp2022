@@ -85,16 +85,6 @@ let and_pred l r = And (l, r)
 type pred_cons_helper =
   { pred_cons : 'a. 'a expression -> 'a expression -> bool expression }
 
-type 'a projection =
-  | Star
-  | ProjExpr of 'a expression
-
-(* Header of the relation (and of the operator) is represented as a list of column names of
-   the kind `tablename.columname`. This approach will not work for the aggregation or
-   subqueries but since we don't support either such a representation should be enough.
-   Also it's not the most efficient one (because of the linear search on column name, but I
-   don't think it's an important issue now)
-   *)
 type header = Ast.name list
 
 let get_table_header table = Table.cols_as_fullnames table
@@ -155,9 +145,6 @@ let ( let* ) = Result.( >>= )
 module type Environment = sig
   val catalog_path : string
   val catalog : Meta.catalog
-
-  (* Actually active database should not be here, but since we don't support
-     switching databases at runtime let's just keep it here for simplicity *)
   val db : Meta.database
   val storage : Relation.AccessManager.storage
 end
