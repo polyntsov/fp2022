@@ -89,25 +89,24 @@ let () =
         let catalog_path = catalog_path
         let catalog = catalog
 
-        let db =
-          let storage =
-            let dbname =
-              match opts.dbname with
-              | None ->
-                Format.eprintf
-                  "Changing database via repl commands is not supported yet, please \
-                   specify it using '-db' command line option";
-                Caml.exit 1
-              | Some dbname -> dbname
-            in
-            match Meta.Catalog.get_db dbname catalog with
+        let storage =
+          let dbname =
+            match opts.dbname with
             | None ->
-              Format.eprintf "No database named %s" dbname;
+              Format.eprintf
+                "Changing database via repl commands is not supported yet, please \
+                 specify it using '-db' command line option";
               Caml.exit 1
-            | Some db -> Relation.AccessManager.set_active db None catalog
+            | Some dbname -> dbname
           in
-          Relation.AccessManager.get_active_db storage
+          match Meta.Catalog.get_db dbname catalog with
+          | None ->
+            Format.eprintf "No database named %s" dbname;
+            Caml.exit 1
+          | Some db -> Relation.AccessManager.set_active db None catalog
         ;;
+
+        let db = Relation.AccessManager.get_active_db storage
       end
       in
       Format.printf "Connected to %s\n%!" (Meta.Database.get_name Env.db);

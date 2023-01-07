@@ -31,10 +31,10 @@ module type Environment = sig
   val catalog_path : string
   val catalog : Meta.catalog
 
-  (* Actually storage should be here instead of database, but since we don't support
-     switching databases at runtime let's just keep here active database
-     for simplicity *)
+  (* Actually active database should not be here, but since we don't support
+     switching databases at runtime let's just keep it here for simplicity *)
   val db : Meta.database
+  val storage : Relation.AccessManager.storage
 end
 
 let printer_ignore show fmt expr = Format.fprintf fmt "%s" (show expr)

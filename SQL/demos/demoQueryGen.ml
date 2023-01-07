@@ -52,10 +52,10 @@ let () =
   write_rel t1 t1_rel;
   write_rel t2 t2_rel;
   write_rel t3 t3_rel;
-  let storage = AccessManager.load_db db c in
   let module Env : Utils.Environment = struct
     let catalog_path = pwd
     let catalog = c
+    let storage = AccessManager.load_db db c
     let db = Relation.AccessManager.get_active_db storage
   end
   in
