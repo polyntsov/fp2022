@@ -268,6 +268,8 @@ end = struct
     | Ast.AndPred (l, r) -> complex_pred and_pred l r
   ;;
 
+  let transform_const_predicate = transform_predicate [] []
+
   let transform_projection_item hdr tables = function
     | Ast.Star ->
       return
@@ -440,13 +442,18 @@ end = struct
     return { op; header }
   ;;
 
+  let add_pred_to_filter ({ op = Filter ({ filter } as filter_op) } as node) pred =
+    let new_filter = And (pred, filter) in
+    { node with op = Filter { filter_op with filter = new_filter } }
+  ;;
+
   module TableMap = Caml.Map.Make (struct
     type t = table
 
     let compare t1 t2 = String.compare (Table.name t1) (Table.name t2)
   end)
 
-  (* Constructs list of pairs (table, tree) where tree is a filter -> datasource or just
+  (* Constructs map<table, tree> where tree is a filter -> datasource or just
      a datasource operator *)
   let pushdown_predicates tables datasources (tables_per_pred, conjuncts) =
     let tables_to_filter =
@@ -530,6 +537,25 @@ end = struct
        | Ast.Cross -> return (cons_cross_join left right))
   ;;
 
+  (* Place const filters above a random table. But actually they should be
+     precalculated (or atleast places above the smallest table).
+   *)
+  let gen_const_preds dses_m = function
+    | [] -> return dses_m
+    | const_preds ->
+      let table = fst (TableMap.choose dses_m) in
+      let* const_pred = transform_const_predicate (pred_of_conjuncts const_preds) in
+      let dses_m =
+        TableMap.update
+          table
+          (function
+           | Some tree -> Some (add_pred_to_filter tree const_pred)
+           | None -> assert false)
+          dses_m
+      in
+      return dses_m
+  ;;
+
   let gen_bottom_level tables datasources = function
     | Some where ->
       let conjuncts = conjuncts_of_pred where in
@@ -539,7 +565,7 @@ end = struct
       let* dses_m =
         pushdown_predicates tables datasources (Caml.List.split pushdownable)
       in
-      return dses_m
+      gen_const_preds dses_m const_preds
     | None ->
       return
         (Caml.List.fold_left2
