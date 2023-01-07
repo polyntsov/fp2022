@@ -65,11 +65,11 @@ let pp_node =
     in
     match op with
     | Projection { child; projection } ->
-      Format.fprintf fmt "@[<v 4>Project @[%a@] ->@ %a@]@." pp_proj projection pp child
+      Format.fprintf fmt "@[<v 4>PROJECT @[%a@] ->@ %a@]@." pp_proj projection pp child
     | Datasource { table } ->
-      Format.fprintf fmt "@[<v 4>Datasource (%s)@]" (Table.name table)
+      Format.fprintf fmt "@[<v 4>DATASOURCE (%s)@]" (Table.name table)
     | Filter { child; filter } ->
-      Format.fprintf fmt "@[<v 4>Filter (@[%a@]) ->@ %a@]" pp_expr filter pp child
+      Format.fprintf fmt "@[<v 4>FILTER (@[%a@]) ->@ %a@]" pp_expr filter pp child
     | Join { left; right; join_constraint } ->
       Format.fprintf
         fmt
