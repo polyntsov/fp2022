@@ -54,6 +54,7 @@ Features done (append only):
 - Parser cram tests
 - Query generation cram tests
 - Query interpretation (except orderby and left/right joins cause nulls are needed for them)
+- Simple REPL (takes a query, prints its plan and result)
 
 Features in progress (and TODOs):
 
