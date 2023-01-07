@@ -11,6 +11,8 @@ module Tuple = struct
 
   type t = element array
 
+  let of_list = Array.of_list
+
   let from_string_list string_tuple table =
     Array.of_list
       (List.map2
@@ -31,11 +33,41 @@ module Tuple = struct
   ;;
 
   let to_string_list tuple = Array.to_list (to_string_array tuple)
-  let at index tuple = Array.get tuple index
+  let nth index tuple = Array.get tuple index
+
+  let nth_as_int index tuple =
+    match nth index tuple with
+    | Int i -> i
+    | String _ -> raise (Invalid_argument "Element is not an interger")
+  ;;
+
+  let nth_as_string index tuple =
+    match nth index tuple with
+    | Int _ -> raise (Invalid_argument "Element is not a string")
+    | String s -> s
+  ;;
+
+  let length tuple = Array.length tuple
+  let join ltuple rtuple = Array.append ltuple rtuple
 end
 
 type t = Tuple.t list
 
+let filter f rel = List.filter f rel
+let map f rel = List.map f rel
+
+let join f left right =
+  List.fold_left
+    (fun joined left_tuple ->
+      let joined_with_left = List.find_all (f left_tuple) right in
+      let res = List.map (Tuple.join left_tuple) joined_with_left in
+      (* super ineffective, it will die on big tables probably *)
+      joined @ res)
+    []
+    left
+;;
+
+let cross_product left right = join (fun _ _ -> true) left right
 let csv_to_string_rel = List.map Csv.Row.to_list
 
 let from_string_rel str_rel table =

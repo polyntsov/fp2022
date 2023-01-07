@@ -755,15 +755,75 @@ module Interpret (M : MonadFail) (E : Environment) : sig
   val explain : Ast.statement -> (node, Utils.error) M.t
 end = struct
   open M
+  open Relation
 
-  let eval op = fail (UnknownColumn "not implemented")
+  let eval_expr expr t1 ?(t2 = None) =
+    let rec eval_expr : type a. a expression -> a =
+      let bin op l r = op (eval_expr l) (eval_expr r) in
+      let nth get index =
+        match t2 with
+        | Some t2 ->
+          let t1_len = Tuple.length t1 in
+          if index < t1_len then get index t1 else get (index - t1_len) t2
+        | None -> get index t1
+      in
+      function
+      | IntCol { index } -> nth Tuple.nth_as_int index
+      | StringCol { index } -> nth Tuple.nth_as_string index
+      | ConstInt i -> i
+      | ConstString s -> s
+      | Plus (l, r) -> bin ( + ) l r
+      | Minus (l, r) -> bin ( - ) l r
+      | Mult (l, r) -> bin ( * ) l r
+      | Div (l, r) -> bin ( - ) l r
+      | Equal (l, r) -> bin Caml.( = ) l r
+      | NotEqual (l, r) -> bin Caml.( != ) l r
+      | Less (l, r) -> bin Caml.( < ) l r
+      | Greater (l, r) -> bin Caml.( > ) l r
+      | LessOrEq (l, r) -> bin Caml.( <= ) l r
+      | GreaterOrEq (l, r) -> bin Caml.( >= ) l r
+      | Or (l, r) -> bin Caml.( || ) l r
+      | And (l, r) -> bin Caml.( && ) l r
+    in
+    eval_expr expr
+  ;;
+
+  let rec eval { op } =
+    match op with
+    | Datasource { table } -> AccessManager.get_rel table E.storage
+    | Filter { child; filter } ->
+      let child_data = eval child in
+      Relation.filter (eval_expr ~t2:None filter) child_data
+    | Projection { child; projection } ->
+      let child_data = eval child in
+      let map t =
+        Tuple.of_list
+          (List.map
+             ~f:
+               (function
+                | `Int e -> Tuple.Int (eval_expr ~t2:None e t)
+                | `String e -> Tuple.String (eval_expr ~t2:None e t)
+                | `Bool e -> Tuple.String (Bool.to_string (eval_expr ~t2:None e t)))
+             projection)
+      in
+      Relation.map map child_data
+    | Join { left; right; join_constraint } ->
+      let left_data = eval left in
+      let right_data = eval right in
+      (match join_constraint with
+       | Cross -> Relation.cross_product left_data right_data
+       | Inner e ->
+         Relation.join (fun t1 t2 -> eval_expr e t1 ~t2:(Some t2)) left_data right_data
+       | Left _e | Right _e -> raise NotImplemented)
+    | OrderBy _ -> raise NotImplemented
+  ;;
 
   let run ast =
     let* plan =
       let module Generator = QueryGenerator (M) (E) in
       Generator.generate ast
     in
-    eval plan
+    return (eval plan)
   ;;
 
   let explain ast =
@@ -772,22 +832,21 @@ end = struct
   ;;
 end
 
-let interpret query (module E : Environment) =
+let execute f query =
   let ans =
-    let module I = Interpret (Result) (E) in
     match Parser.parse query with
-    | Caml.Result.Ok ast -> I.run ast
+    | Caml.Result.Ok ast -> f ast
     | Caml.Result.Error error -> Result.fail (ParsingError error)
   in
   ans
 ;;
 
+let interpret query (module E : Environment) =
+  let module I = Interpret (Result) (E) in
+  execute I.run query
+;;
+
 let explain query (module E : Environment) =
-  let ans =
-    let module I = Interpret (Result) (E) in
-    match Parser.parse query with
-    | Caml.Result.Ok ast -> I.explain ast
-    | Caml.Result.Error error -> Result.fail (ParsingError error)
-  in
-  ans
+  let module I = Interpret (Result) (E) in
+  execute I.explain query
 ;;

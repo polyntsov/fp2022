@@ -13,12 +13,22 @@ module Tuple : sig
 
   val from_string_list : string list -> table -> t
   val to_string_list : t -> string list
+  val nth : int -> t -> element
+  val nth_as_int : int -> t -> int
+  val nth_as_string : int -> t -> string
+  val of_list : element list -> t
+  val length : t -> int
+  val join : t -> t -> t
 end
 
 type t
 
 val to_tuple_list : t -> Tuple.t list
 val to_csv : t -> Csv.t
+val filter : (Tuple.t -> bool) -> t -> t
+val map : (Tuple.t -> Tuple.t) -> t -> t
+val cross_product : t -> t -> t
+val join : (Tuple.t -> Tuple.t -> bool) -> t -> t -> t
 
 module AccessManager : sig
   type storage

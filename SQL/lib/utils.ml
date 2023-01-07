@@ -38,3 +38,5 @@ module type Environment = sig
 end
 
 let printer_ignore show fmt expr = Format.fprintf fmt "%s" (show expr)
+
+exception NotImplemented
