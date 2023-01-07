@@ -42,7 +42,7 @@ let rec show_expression : type a. a expression -> _ =
   | StringCol { index } -> Format.sprintf "StringCol %s" (string_of_int index)
   | ConstInt i -> Format.sprintf "ConstInt %d" i
   | ConstString s -> Format.sprintf "ConstString %s" s
-  | Plus (l, r) -> bin "Cons" l r
+  | Plus (l, r) -> bin "Plus" l r
   | Minus (l, r) -> bin "Minus" l r
   | Mult (l, r) -> bin "Mult" l r
   | Div (l, r) -> bin "Div" l r
