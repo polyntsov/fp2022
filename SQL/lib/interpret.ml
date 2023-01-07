@@ -152,6 +152,16 @@ and node =
 
 let ( let* ) = Result.( >>= )
 
+module type Environment = sig
+  val catalog_path : string
+  val catalog : Meta.catalog
+
+  (* Actually active database should not be here, but since we don't support
+     switching databases at runtime let's just keep it here for simplicity *)
+  val db : Meta.database
+  val storage : Relation.AccessManager.storage
+end
+
 module QueryGenerator (M : MonadFail) (E : Environment) : sig
   val generate : Ast.statement -> (node, Utils.error) M.t
 end = struct

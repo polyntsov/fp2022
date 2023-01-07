@@ -133,7 +133,7 @@ module AccessManager = struct
     let types, names =
       match hdr_rows with
       | [ types; names ] when List.length types = List.length names -> types, names
-      | _ -> raise (Failure (hdr_file ^ " has wrong format"))
+      | _ -> raise (Utils.GeneralError (hdr_file ^ " has wrong format"))
     in
     let rel_csv = Csv.load rel_file in
     if Csv.columns rel_csv != List.length types
@@ -150,13 +150,14 @@ module AccessManager = struct
         c
     in
     if not (Csv.is_square rel_csv)
-    then raise (Failure (rel_file ^ " has empty cells"))
+    then raise (Utils.GeneralError (rel_file ^ " has empty cells"))
     else dump_csv t rel_csv c;
     db, c
   ;;
 
   let make_db_from path c =
-    if not (Sys.is_directory path) then raise (Failure ("No directory " ^ path));
+    if not (Sys.is_directory path)
+    then raise (Utils.GeneralError ("No directory " ^ path));
     let db, c = Catalog.create_db (Filename.basename path) c in
     Catalog.dump c;
     let load_if_csv name (db, c) =

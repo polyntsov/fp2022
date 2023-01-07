@@ -27,16 +27,7 @@ module type MonadFail = sig
   val fail : 'e -> ('a, 'e) t
 end
 
-module type Environment = sig
-  val catalog_path : string
-  val catalog : Meta.catalog
-
-  (* Actually active database should not be here, but since we don't support
-     switching databases at runtime let's just keep it here for simplicity *)
-  val db : Meta.database
-  val storage : Relation.AccessManager.storage
-end
-
 let printer_ignore show fmt expr = Format.fprintf fmt "%s" (show expr)
 
 exception NotImplemented
+exception GeneralError of string

@@ -46,7 +46,7 @@ let column_type_to_string = function
 let column_type_of_string = function
   | "IntCol" -> IntCol
   | "StringCol" -> StringCol
-  | _ -> raise (Failure "Unkown column type")
+  | _ -> raise (Utils.GeneralError "Unkown column type")
 ;;
 
 let file_perm = 0o775
@@ -236,7 +236,7 @@ module Catalog = struct
   let create path =
     let cpath = get_catalog_dir path in
     if Sys.file_exists cpath
-    then raise (Failure "catalog already exists")
+    then raise (Utils.GeneralError "catalog already exists")
     else { dbs = []; cpath }
   ;;
 
@@ -246,8 +246,10 @@ module Catalog = struct
     if Sys.file_exists meta_path
     then (
       try catalog_of_yojson (Yojson.Safe.from_file meta_path) with
-      | _ -> raise (Failure (Format.sprintf "Meta file %s has wrong format." meta_path)))
-    else raise (Failure "Meta does not exist")
+      | _ ->
+        raise
+          (Utils.GeneralError (Format.sprintf "Meta file %s has wrong format." meta_path)))
+    else raise (Utils.GeneralError "Meta does not exist")
   ;;
 
   let init path =

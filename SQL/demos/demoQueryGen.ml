@@ -52,7 +52,7 @@ let () =
   write_rel t1 t1_rel;
   write_rel t2 t2_rel;
   write_rel t3 t3_rel;
-  let module Env : Utils.Environment = struct
+  let module Env : Interpret.Environment = struct
     let catalog_path = pwd
     let catalog = c
     let storage = AccessManager.load_db db c

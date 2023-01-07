@@ -86,7 +86,7 @@ let () =
     let catalog = Meta.Catalog.init catalog_path in
     match opts.make_db_from with
     | None ->
-      let module Env : Utils.Environment = struct
+      let module Env : Interpret.Environment = struct
         let catalog_path = catalog_path
         let catalog = catalog
 
