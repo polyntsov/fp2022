@@ -15,10 +15,10 @@
 (homepage "github.com/polynstov/fp2022")
 
 (package
- (name SQL) ; FIXME and regenerate .opam file using 'dune build @install'
- (synopsis "An interpreter for a subset of SQL language")
+ (name SQL)
+ (synopsis "An interpreter for a mini SQL")
  (description
-  "FIXME. A longer description, for example, which are the most interesing features being supported, etc.")
+  "Interpreter of a subset of SQL language (mainly joins and filtration), provides a REPL")
  (version 0.1)
  (depends
   dune
@@ -30,5 +30,9 @@
   (odoc :with-doc)
   (ocamlformat :build)
   base
+  csv
+  ppx_yojson_conv
+  ppx_variants_conv
+  core
   ; After adding dependencies to 'dune' files and the same dependecies here too
   ))

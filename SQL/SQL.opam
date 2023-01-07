@@ -19,6 +19,10 @@ depends: [
   "odoc" {with-doc}
   "ocamlformat" {build}
   "base"
+  "csv"
+  "ppx_yojson_conv"
+  "ppx_variants_conv"
+  "core"
 ]
 build: [
   ["dune" "subst"] {dev}
