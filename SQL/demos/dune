@@ -1,13 +1,7 @@
 (executable
- (name demoAO)
- (modules demoAO)
- (public_name demoAO)
- (libraries sql_lib))
-
-(executable
- (name demoNO)
- (modules demoNO)
- (public_name demoNO)
+ (name demoQueryGen)
+ (modules demoQueryGen)
+ (public_name demoQueryGen)
  (libraries sql_lib))
 
 (executable
@@ -17,4 +11,4 @@
  (libraries sql_lib stdio))
 
 (cram
- (deps ./demoNO.exe ./demoAO.exe ./demoParse.exe ../REPL.exe))
+ (deps ./demoQueryGen.exe ./demoParse.exe ../REPL.exe))
