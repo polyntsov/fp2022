@@ -215,7 +215,7 @@ end = struct
     | [ tname; cname ] -> resolve_col_with_table tname cname
     | [ cname ] -> resolve_with Database.get_col_ci cname tables
     (* actually impossible case, because such names should not pass parsing *)
-    | _ -> assert false
+    | _ -> raise (Invalid_argument "Wrongly shaped fullnames should not pass parsing")
   ;;
 
   let rec transform_arithm_expression hdr tables =
@@ -601,7 +601,7 @@ end = struct
           table
           (function
            | Some tree -> Some (add_pred_to_filter tree const_pred)
-           | None -> assert false)
+           | None -> raise (Invalid_argument "dses_m cannot be an emtpy"))
           dses_m
       in
       return dses_m
@@ -722,7 +722,9 @@ end = struct
 
   let generate = function
     (* Insert queries are not supported yet and won't pass the parsing *)
-    | Ast.Insert -> assert false
+    | Ast.Insert ->
+      raise
+        (Invalid_argument "Insert queries are not supported and should not pass parsing")
     | Ast.Select { projection; from; where } ->
       let* from_tables_per_ds, all_tables = get_from_tables from in
       let datasources = List.map all_tables ~f:cons_datasource in

@@ -16,8 +16,7 @@ module Tuple = struct
   let from_string_list string_tuple table =
     Array.of_list
       (List.map2
-         (fun string_value ctype ->
-           match ctype with
+         (fun string_value -> function
            | IntCol -> Int (int_of_string string_value)
            | StringCol -> String string_value)
          string_tuple
