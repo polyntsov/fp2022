@@ -695,7 +695,7 @@ let%test _ =
 
 (*** SQL statement parsers ***)
 
-let comma_p = char ','
+let comma_p = spaces (char ',')
 let insert_word_p = string_ci "INSERT"
 let select_word_p = string_ci "SELECT"
 let from_word_p = string_ci "FROM"

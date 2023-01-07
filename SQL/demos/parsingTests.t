@@ -13,6 +13,21 @@ answer is correct
     orderby = None}
 
   $ ./demoParse.exe <<-EOF
+  > select * , * from t
+  Select {projection = [Star; Star]; from = [(Table "t")]; where = None;
+    orderby = None}
+
+  $ ./demoParse.exe <<-EOF
+  > select * , * , A , B , 2 + 2 from t
+  Select {
+    projection =
+    [Star; Star; (ProjAtomItem ((Column "A"), None));
+      (ProjAtomItem ((Column "B"), None));
+      (ProjAtomItem ((Plus ((Int 2), (Int 2))), None))];
+    from = [(Table "t")]; where = None; orderby = None}
+ 
+
+  $ ./demoParse.exe <<-EOF
   > select lo_extendedprice as price, lo_discount as discount
   > from lineorder, date
   > where lo_orderdate = d_datekey
@@ -222,3 +237,5 @@ answer is correct
          None))
       ];
     from = [(Table "t1")]; where = None; orderby = None}
+
+
