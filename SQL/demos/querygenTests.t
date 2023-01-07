@@ -122,7 +122,8 @@ OR t3.c = 'e'
               DATASOURCE (t1)
           AND
               DATASOURCE (t2)
-          ON And (Equal (IntCol 0, IntCol 2), NotEqual (Minus (IntCol 0, IntCol 2), ConstInt 0))
+          ON And (Equal (IntCol 0, IntCol 2),
+                  NotEqual (Minus (IntCol 0, IntCol 2), ConstInt 0))
  
   $ ./demoQueryGen.exe <<-EOF
   > select t1.a

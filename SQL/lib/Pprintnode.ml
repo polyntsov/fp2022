@@ -58,8 +58,7 @@ let pp_node =
       | Cross -> Format.fprintf fmt "CROSS"
     in
     let pp_join_constraint fmt = function
-      | Left pred | Right pred | Inner pred ->
-        Format.fprintf fmt "@,ON %s" (show_expression pred)
+      | Left pred | Right pred | Inner pred -> Format.fprintf fmt "@,ON %a" pp_expr pred
       | Cross -> ()
     in
     match op with
@@ -68,7 +67,7 @@ let pp_node =
     | Datasource { table } ->
       Format.fprintf fmt "@[<v 4>DATASOURCE (%s)@]" (Table.name table)
     | Filter { child; filter } ->
-      Format.fprintf fmt "@[<v 4>FILTER (@[%a@]) ->@ %a@]" pp_expr filter pp child
+      Format.fprintf fmt "@[<v 4>FILTER (@[%a@]) ->@ @[%a@]@]" pp_expr filter pp child
     | Join { left; right; join_constraint } ->
       Format.fprintf
         fmt
