@@ -5,7 +5,7 @@
 open Base
 open Sql_lib
 
-let run_query query e out_file =
+let run_query query e out_file print_plan =
   match Interpret.explain query e with
   | Result.Error error -> Caml.Format.printf "%s\n%!" (Utils.show_error error)
   | Result.Ok tree ->
@@ -16,18 +16,18 @@ let run_query query e out_file =
          match out_file with
          | Some out_file -> fun rel -> Csv.save out_file (Relation.to_csv rel)
          | None ->
-           Pprintnode.pp tree;
+           if print_plan then Pprintnode.pp tree;
            fun rel -> Csv.print_readable (List.concat [ [ header ]; Relation.to_csv rel ])
        in
        output rel)
 ;;
 
-let run_single e out_file =
+let run_single e out_file print_plan =
   let query = Stdio.In_channel.(input_all stdin) |> String.rstrip in
-  run_query query e out_file
+  run_query query e out_file print_plan
 ;;
 
-let run_repl e out_file =
+let run_repl e out_file print_plan =
   let get_char () =
     let termio = Unix.tcgetattr Unix.stdin in
     let () =
@@ -51,7 +51,7 @@ let run_repl e out_file =
       | c -> helper (add_to_query query c) semicolon
     in
     Format.printf "> %!";
-    run_query (helper "" false) e out_file
+    run_query (helper "" false) e out_file print_plan
   done
 ;;
 
@@ -61,6 +61,7 @@ type opts =
   ; mutable dbname : string option
   ; mutable make_db_from : string option
   ; mutable out_file : string option
+  ; mutable print_plan : bool
   }
 
 let () =
@@ -70,6 +71,7 @@ let () =
     ; make_db_from = None
     ; dbname = None
     ; out_file = None
+    ; print_plan = false
     }
   in
   let open Caml.Arg in
@@ -87,6 +89,9 @@ let () =
     ; ( "-to-out-file"
       , String (fun path -> opts.out_file <- Some path)
       , "Save query results to the file instead of printing it to stdout" )
+    ; ( "-print-plan"
+      , Unit (fun () -> opts.print_plan <- true)
+      , "Print query plan before its results" )
     ]
     (fun arg ->
       Caml.Format.eprintf "Unrecognized argument '%s', try --help\n" arg;
@@ -123,7 +128,7 @@ let () =
       in
       Format.printf "Connected to %s\n%!" (Meta.Database.get_name Env.db);
       let run = if opts.batch then run_single else run_repl in
-      run (module Env) opts.out_file
+      run (module Env) opts.out_file opts.print_plan
     | Some path ->
       let _c = Relation.AccessManager.make_db_from path catalog in
       ()
