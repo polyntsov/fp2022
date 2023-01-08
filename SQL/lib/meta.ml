@@ -111,7 +111,7 @@ module Database = struct
   let add_table table ({ tables } as db) = { db with tables = table :: tables }
 
   let delete_table table { dname; tables } =
-    { dname; tables = List.filter (( != ) table) tables }
+    { dname; tables = List.filter (( <> ) table) tables }
   ;;
 
   let update_table old_table new_table db =
@@ -184,7 +184,7 @@ module Catalog = struct
   let add_db db ({ dbs = old_dbs } as c) = { c with dbs = db :: old_dbs }
 
   let delete_db db ({ dbs = old_dbs } as c) =
-    { c with dbs = List.filter (( != ) db) old_dbs }
+    { c with dbs = List.filter (( <> ) db) old_dbs }
   ;;
 
   let get_dbs { dbs } = dbs

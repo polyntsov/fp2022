@@ -196,7 +196,7 @@ end = struct
     in
     match Caml.String.split_on_char '.' fullname with
     | [ dbname; tname; cname ] ->
-      if Database.get_name E.db != dbname
+      if String.( <> ) (Database.get_name E.db) dbname
       then fail (WrongDatabase dbname)
       else resolve_col_with_table tname cname
     | [ tname; cname ] -> resolve_col_with_table tname cname
@@ -779,13 +779,13 @@ end = struct
       | Mult (l, r) -> bin ( * ) l r
       | Div (l, r) -> bin ( - ) l r
       | Equal (l, r) -> bin Caml.( = ) l r
-      | NotEqual (l, r) -> bin Caml.( != ) l r
+      | NotEqual (l, r) -> bin Caml.( <> ) l r
       | Less (l, r) -> bin Caml.( < ) l r
       | Greater (l, r) -> bin Caml.( > ) l r
       | LessOrEq (l, r) -> bin Caml.( <= ) l r
       | GreaterOrEq (l, r) -> bin Caml.( >= ) l r
-      | Or (l, r) -> bin Caml.( || ) l r
-      | And (l, r) -> bin Caml.( && ) l r
+      | Or (l, r) -> bin ( || ) l r
+      | And (l, r) -> bin ( && ) l r
     in
     eval_expr expr
   ;;
