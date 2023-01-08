@@ -12,7 +12,8 @@ let run_query query e =
     Pprintnode.pp tree;
     (match Interpret.interpret query e with
      | Result.Error error -> Caml.Format.printf "%s\n%!" (Utils.show_error error)
-     | Result.Ok rel -> Csv.print_readable (Relation.to_csv rel))
+     | Result.Ok (header, rel) ->
+       Csv.print_readable (List.concat [ [ header ]; Relation.to_csv rel ]))
 ;;
 
 let run_single e =

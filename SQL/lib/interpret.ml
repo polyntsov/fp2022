@@ -753,7 +753,7 @@ end = struct
 end
 
 module Interpret (M : MonadFail) (E : Environment) : sig
-  val run : Ast.statement -> (Relation.t, Utils.error) M.t
+  val run : Ast.statement -> (header * Relation.t, Utils.error) M.t
   val explain : Ast.statement -> (node, Utils.error) M.t
 end = struct
   open M
@@ -821,11 +821,11 @@ end = struct
   ;;
 
   let run ast =
-    let* plan =
+    let* ({ header } as plan) =
       let module Generator = QueryGenerator (M) (E) in
       Generator.generate ast
     in
-    return (eval plan)
+    return (header, eval plan)
   ;;
 
   let explain ast =

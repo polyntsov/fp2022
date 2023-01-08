@@ -89,5 +89,9 @@ module type Environment = sig
   val storage : Relation.AccessManager.storage
 end
 
-val interpret : string -> (module Environment) -> (Relation.t, Utils.error) result
+val interpret
+  :  string
+  -> (module Environment)
+  -> (header * Relation.t, Utils.error) result
+
 val explain : string -> (module Environment) -> (node, Utils.error) result
