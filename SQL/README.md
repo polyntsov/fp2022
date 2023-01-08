@@ -39,7 +39,8 @@ OR:
   <Table reference> CROSS JOIN <Table reference>
 
 Only INNER and CROSS joins are interpreted at the moment, however all other types
-are parsed and generated. OrderBy is only supported on the parser level.
+are parsed and generated. All kinds of nested joins and chained joins are supported (check the
+tests to see the examples). OrderBy is only supported on the parser level.
 
 Features done (append only):
 
@@ -55,10 +56,15 @@ Features done (append only):
 - Query generation cram tests
 - Query interpretation (except orderby and left/right joins cause nulls are needed for them)
 - Simple REPL (takes a query, prints its plan and result)
+- Interpreter default cram tests
+- Interpreter cram tests using verification by MySQL
+- Small benchmarking done:
+  It takes >15min to 1.5GB tables, didn't wait untill the end (because lists are a really bad
+  choice to represent the relation, arrays won't help much too I think).
+  It takes ~40 secs to join four 100MB tables.
+
 
 Features in progress (and TODOs):
 
 - Write a HOWTO/USAGE
-- Benchmark on big data
-- Verification tests using some real database
 - Improve error handling (especially in the catalog)
