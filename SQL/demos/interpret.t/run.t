@@ -240,3 +240,11 @@ SPDX-License-Identifier: CC0-1.0
   3    something b    3    5    b    int
   5    kakadu    c    5    4    c    double
  
+  $ ../../REPL.exe -db testdb -no-repl <<EOF
+  > select * from t3 where a = 101
+  > EOF
+  Connected to testdb
+  t3.a t3.b    t3.c
+  101  a       long
+  101  nomatch random
+ 
