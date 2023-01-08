@@ -20,7 +20,7 @@ mysql_user=$2
 mysql_pass=$3
 
 [ ! -d $gendir ] &&
-    git clone git@github.com:polyntsov/SQL_Storage_Benchmark.git ssbgen
+    git clone git@github.com:polyntsov/SQL_Storage_Benchmark.git ssbgen --quiet
 
 [ ! -d $headers ] &&
     { echo "Unable to found directory with headers, exiting" ; exit 1; }
