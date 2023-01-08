@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright 2021-2022, Michael Polyntsov and contributors
+# SPDX-License-Identifier: CC0-1.0
 
 user=$1
 pass=$2
