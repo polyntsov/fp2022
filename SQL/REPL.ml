@@ -5,7 +5,17 @@
 open Base
 open Sql_lib
 
-let run_query query e out_file print_plan =
+let stat_query e query =
+  let time s f =
+    let t = Unix.gettimeofday () in
+    let _fx = f query e in
+    Format.printf "%s execution time: %fs\n%!" s (Unix.gettimeofday () -. t)
+  in
+  time "Parsing and transformation" Interpret.explain;
+  time "Full execution" Interpret.interpret
+;;
+
+let run_query out_file print_plan e query =
   match Interpret.explain query e with
   | Result.Error error -> Caml.Format.printf "%s\n%!" (Utils.show_error error)
   | Result.Ok tree ->
@@ -22,12 +32,12 @@ let run_query query e out_file print_plan =
        output rel)
 ;;
 
-let run_single e out_file print_plan =
+let run_single runner =
   let query = Stdio.In_channel.(input_all stdin) |> String.rstrip in
-  run_query query e out_file print_plan
+  runner query
 ;;
 
-let run_repl e out_file print_plan =
+let run_repl runner =
   let get_char () =
     let termio = Unix.tcgetattr Unix.stdin in
     let () =
@@ -51,7 +61,7 @@ let run_repl e out_file print_plan =
       | c -> helper (add_to_query query c) semicolon
     in
     Format.printf "> %!";
-    run_query (helper "" false) e out_file print_plan
+    runner (helper "" false)
   done
 ;;
 
@@ -62,6 +72,7 @@ type opts =
   ; mutable make_db_from : string option
   ; mutable out_file : string option
   ; mutable print_plan : bool
+  ; mutable benchmark : bool
   }
 
 let () =
@@ -72,6 +83,7 @@ let () =
     ; dbname = None
     ; out_file = None
     ; print_plan = false
+    ; benchmark = false
     }
   in
   let open Caml.Arg in
@@ -92,6 +104,7 @@ let () =
     ; ( "-print-plan"
       , Unit (fun () -> opts.print_plan <- true)
       , "Print query plan before its results" )
+    ; "-benchmark", Unit (fun () -> opts.benchmark <- true), "Benchmark queries"
     ]
     (fun arg ->
       Caml.Format.eprintf "Unrecognized argument '%s', try --help\n" arg;
@@ -128,7 +141,12 @@ let () =
       in
       Format.printf "Connected to %s\n%!" (Meta.Database.get_name Env.db);
       let run = if opts.batch then run_single else run_repl in
-      run (module Env) opts.out_file opts.print_plan
+      let runner =
+        if opts.benchmark
+        then stat_query (module Env)
+        else run_query opts.out_file opts.print_plan (module Env)
+      in
+      run runner
     | Some path ->
       let _c = Relation.AccessManager.make_db_from path catalog in
       ()
