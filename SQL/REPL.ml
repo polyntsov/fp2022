@@ -5,23 +5,29 @@
 open Base
 open Sql_lib
 
-let run_query query e =
+let run_query query e out_file =
   match Interpret.explain query e with
   | Result.Error error -> Caml.Format.printf "%s\n%!" (Utils.show_error error)
   | Result.Ok tree ->
-    Pprintnode.pp tree;
     (match Interpret.interpret query e with
      | Result.Error error -> Caml.Format.printf "%s\n%!" (Utils.show_error error)
      | Result.Ok (header, rel) ->
-       Csv.print_readable (List.concat [ [ header ]; Relation.to_csv rel ]))
+       let output =
+         match out_file with
+         | Some out_file -> fun rel -> Csv.save out_file (Relation.to_csv rel)
+         | None ->
+           Pprintnode.pp tree;
+           fun rel -> Csv.print_readable (List.concat [ [ header ]; Relation.to_csv rel ])
+       in
+       output rel)
 ;;
 
-let run_single e =
+let run_single e out_file =
   let query = Stdio.In_channel.(input_all stdin) |> String.rstrip in
-  run_query query e
+  run_query query e out_file
 ;;
 
-let run_repl e =
+let run_repl e out_file =
   let get_char () =
     let termio = Unix.tcgetattr Unix.stdin in
     let () =
@@ -45,17 +51,16 @@ let run_repl e =
       | c -> helper (add_to_query query c) semicolon
     in
     Format.printf "> %!";
-    run_query (helper "" false) e
+    run_query (helper "" false) e out_file
   done
 ;;
-
-(*Caml.Format.eprintf "OCaml-style toplevel (ocamlc, utop) is not implemented"*)
 
 type opts =
   { mutable batch : bool
   ; mutable catalog_path : string
   ; mutable dbname : string option
   ; mutable make_db_from : string option
+  ; mutable out_file : string option
   }
 
 let () =
@@ -64,6 +69,7 @@ let () =
     ; catalog_path = Filename.current_dir_name
     ; make_db_from = None
     ; dbname = None
+    ; out_file = None
     }
   in
   let open Caml.Arg in
@@ -78,6 +84,9 @@ let () =
     ; ( "-make_db_from"
       , String (fun path -> opts.make_db_from <- Some path)
       , "Create database from specified directory and exit" )
+    ; ( "-to-out-file"
+      , String (fun path -> opts.out_file <- Some path)
+      , "Save query results to the file instead of printing it to stdout" )
     ]
     (fun arg ->
       Caml.Format.eprintf "Unrecognized argument '%s', try --help\n" arg;
@@ -113,7 +122,8 @@ let () =
       end
       in
       Format.printf "Connected to %s\n%!" (Meta.Database.get_name Env.db);
-      if opts.batch then run_single (module Env) else run_repl (module Env)
+      let run = if opts.batch then run_single else run_repl in
+      run (module Env) opts.out_file
     | Some path ->
       let _c = Relation.AccessManager.make_db_from path catalog in
       ()
