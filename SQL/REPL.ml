@@ -77,11 +77,11 @@ let () =
     [ ( "-no-repl"
       , Unit (fun () -> opts.batch <- true)
       , "Read from stdin single program, instead of running full REPL" )
-    ; ( "-catalog_path"
+    ; ( "-catalog-path"
       , String (fun path -> opts.catalog_path <- path)
       , "Path to the directory where to store DB data. Defaults to current dir" )
     ; "-db", String (fun dbname -> opts.dbname <- Some dbname), "Database to use"
-    ; ( "-make_db_from"
+    ; ( "-make-db-from"
       , String (fun path -> opts.make_db_from <- Some path)
       , "Create database from specified directory and exit" )
     ; ( "-to-out-file"
