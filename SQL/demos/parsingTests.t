@@ -238,4 +238,42 @@ answer is correct
       ];
     from = [(Table "t1")]; where = None; orderby = None}
 
+  $ ./demoParse.exe <<-EOF
+  > select user_1.custid
+  > from
+  > (user_1 join user_4 on user_1.custid = user_4.custid)
+  > join user_2 on user_1.custid = user_2.custid
+  > join user_3 on user_1.custid = user_3.custid
+  Select {projection = [(ProjAtomItem ((Column "user_1.custid"), None))];
+    from =
+    [Join {
+       left =
+       Join {
+         left =
+         Join {left = (Table "user_1"); right = (Table "user_4");
+           join_constraint =
+           (Inner (Equal ((Column "user_1.custid"), (Column "user_4.custid"))))};
+         right = (Table "user_2");
+         join_constraint =
+         (Inner (Equal ((Column "user_1.custid"), (Column "user_2.custid"))))};
+       right = (Table "user_3");
+       join_constraint =
+       (Inner (Equal ((Column "user_1.custid"), (Column "user_3.custid"))))}
+      ];
+    where = None; orderby = None}
 
+  $ ./demoParse.exe <<-EOF
+  > select user_1.custid
+  > from
+  > (user_1 join user_4 on user_1.custid = user_4.custid)
+  > cross join user_3
+  Select {projection = [(ProjAtomItem ((Column "user_1.custid"), None))];
+    from =
+    [Join {
+       left =
+       Join {left = (Table "user_1"); right = (Table "user_4");
+         join_constraint =
+         (Inner (Equal ((Column "user_1.custid"), (Column "user_4.custid"))))};
+       right = (Table "user_3"); join_constraint = Cross}
+      ];
+    where = None; orderby = None}

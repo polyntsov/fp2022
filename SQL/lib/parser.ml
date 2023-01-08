@@ -462,7 +462,7 @@ let join_p =
       chained_join)
 ;;
 
-let datasource_p = parens_p join_p <|> join_p <|> table_p
+let datasource_p = join_p <|> parens_p join_p <|> table_p
 let assert_ok_ds s expected = assert_ok show_datasource datasource_p s expected
 
 let%test _ =
