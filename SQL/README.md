@@ -7,6 +7,11 @@ Author: Michael Polyntsov, arno9148@gmail.com
 Usage:
 ...
 
+To turn on MySQL verification tests on [SSB](https://github.com/polyntsov/SQL_Storage_Benchmark) do
+the following steps:
+1. Firstly create a user in MySQL and specify it's credentials in `USER` and `PASS` variables in
+`bigInterpret.t/run.t` file.
+2. Then run `dune test --profile=mysql`.
 
 Implemented language:
 

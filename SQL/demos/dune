@@ -12,3 +12,8 @@
 
 (cram
  (deps ./demoQueryGen.exe ./demoParse.exe ../REPL.exe))
+
+(cram
+ (applies_to bigInterpret)
+ (enabled_if
+  (= %{profile} mysql)))
